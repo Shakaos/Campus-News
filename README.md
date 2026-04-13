@@ -1,9 +1,9 @@
-# PIGFA - Portal Inteligente Institucional com Gestão de Fluxo Acadêmico
+# Campus News - Portal Inteligente Institucional com Gestão de Fluxo Acadêmico
 
 ## Parte 1 – Rascunho Digital
 
 ### Base do Projeto
-- **Nome Oficial:** Portal Inteligente Institucional com Gestão de Fluxo Acadêmico (PIGFA)
+- **Nome Oficial:** Campus News - Portal Inteligente Institucional com Gestão de Fluxo Acadêmico
 - **Nome Comercial Sugerido:** UniFlow ou Portal Acadêmico Inteligente.
 - **Frase de Propósito:** "Conectando o campus, otimizando o tempo e simplificando a vida acadêmica."
 
