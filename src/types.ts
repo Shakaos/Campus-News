@@ -37,4 +37,4 @@ export interface QueueTicket {
   timestamp: string;
 }
 
-export type AppView = 'home' | 'jornal' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin';
+export type AppView = 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin';

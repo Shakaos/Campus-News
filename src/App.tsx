@@ -63,9 +63,9 @@ export default function App() {
       <header className="sticky top-0 z-50 bg-white border-b border-[#E5E5E5] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('home')}>
           <div className="w-8 h-8 bg-[#141414] rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xs">P</span>
+            <span className="text-white font-bold text-xs">C</span>
           </div>
-          <h1 className="font-bold tracking-tight text-lg">PIGFA</h1>
+          <h1 className="font-bold tracking-tight text-lg">Campus News</h1>
         </div>
         
         <button 
@@ -87,7 +87,7 @@ export default function App() {
           >
             <nav className="flex flex-col gap-6">
               <MenuLink icon={<LayoutDashboard size={20} />} label="Home" onClick={() => navigate('home')} />
-              <MenuLink icon={<Newspaper size={20} />} label="Jornal Digital" onClick={() => navigate('jornal')} />
+              <MenuLink icon={<Newspaper size={20} />} label="Campus News" onClick={() => navigate('campus-news')} />
               <MenuLink icon={<Search size={20} />} label="Consulta de Salas" onClick={() => navigate('salas')} />
               <MenuLink icon={<Users size={20} />} label="Gestão de Filas" onClick={() => navigate('filas')} />
               <div className="h-px bg-gray-100 my-2" />
@@ -101,8 +101,8 @@ export default function App() {
       <main className="max-w-md mx-auto pb-20">
         <AnimatePresence mode="wait">
           {view === 'home' && <HomeView onNavigate={navigate} />}
-          {view === 'jornal' && <JornalView onNavigate={navigate} />}
-          {view === 'noticia' && selectedNews && <NewsDetailView news={selectedNews} onBack={() => navigate('jornal')} />}
+          {view === 'campus-news' && <JornalView onNavigate={navigate} />}
+          {view === 'noticia' && selectedNews && <NewsDetailView news={selectedNews} onBack={() => navigate('campus-news')} />}
           {view === 'salas' && <SalasView onBack={() => navigate('home')} />}
           {view === 'filas' && <FilasView onJoin={(ticket) => { setActiveTicket(ticket); navigate('acompanhamento'); }} />}
           {view === 'acompanhamento' && activeTicket && <AcompanhamentoView ticket={activeTicket} onExit={() => { setActiveTicket(null); navigate('home'); }} />}
@@ -118,7 +118,7 @@ export default function App() {
           className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3 flex justify-around items-center md:hidden"
         >
           <button onClick={() => navigate('home')} className={`p-2 ${view === 'home' ? 'text-black' : 'text-gray-400'}`}><LayoutDashboard size={24} /></button>
-          <button onClick={() => navigate('jornal')} className={`p-2 ${view === 'jornal' ? 'text-black' : 'text-gray-400'}`}><Newspaper size={24} /></button>
+          <button onClick={() => navigate('campus-news')} className={`p-2 ${view === 'campus-news' ? 'text-black' : 'text-gray-400'}`}><Newspaper size={24} /></button>
           <button onClick={() => navigate('salas')} className={`p-2 ${view === 'salas' ? 'text-black' : 'text-gray-400'}`}><Search size={24} /></button>
           <button onClick={() => navigate('filas')} className={`p-2 ${view === 'filas' || view === 'acompanhamento' ? 'text-black' : 'text-gray-400'}`}><Users size={24} /></button>
         </motion.div>
@@ -144,68 +144,113 @@ function MenuLink({ icon, label, onClick }: { icon: React.ReactNode, label: stri
 function HomeView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => void }) {
   return (
     <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="p-6 space-y-8"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="p-6 space-y-10"
     >
-      <div className="space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Bem-vindo ao PIGFA</h2>
-        <p className="text-gray-500">Sua central de informações e serviços acadêmicos em um só lugar.</p>
-      </div>
-
-      <div className="grid gap-4">
-        <ModuleCard 
-          icon={<Newspaper className="text-blue-500" />}
-          title="Jornal Digital"
-          description="Notícias, eventos e avisos importantes da instituição."
-          onClick={() => onNavigate('jornal')}
-        />
-        <ModuleCard 
-          icon={<Search className="text-green-500" />}
-          title="Consulta de Salas"
-          description="Encontre salas disponíveis e horários de professores."
-          onClick={() => onNavigate('salas')}
-        />
-        <ModuleCard 
-          icon={<Users className="text-orange-500" />}
-          title="Gestão de Filas"
-          description="Entre na fila virtual e acompanhe seu tempo de espera."
-          onClick={() => onNavigate('filas')}
-        />
-      </div>
-
-      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-3 mb-3">
-          <AlertCircle size={20} className="text-red-500" />
-          <h3 className="font-bold">Aviso Urgente</h3>
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <Activity size={12} />
+          Campus Online
         </div>
-        <p className="text-sm text-gray-600 mb-3">Manutenção elétrica no Bloco B amanhã. Aulas realocadas.</p>
-        <button 
-          onClick={() => onNavigate('jornal')}
-          className="text-xs font-bold uppercase tracking-wider text-gray-400 hover:text-black transition-colors"
-        >
-          Ver detalhes
-        </button>
+        <h2 className="text-4xl font-extrabold tracking-tight leading-none">
+          Olá, <span className="text-gray-400">Estudante</span>
+        </h2>
+        <p className="text-gray-500 text-lg leading-snug">
+          Bem-vindo ao Campus News. Tudo o que você precisa para navegar no campus hoje.
+        </p>
+      </div>
+
+      <div className="grid gap-5">
+        <ModuleCard 
+          icon={<Newspaper className="text-blue-600" />}
+          title="Campus News"
+          description="Fique por dentro de eventos, editais e avisos."
+          onClick={() => onNavigate('campus-news')}
+          color="bg-blue-50"
+        />
+        <div className="grid grid-cols-2 gap-5">
+          <ModuleCard 
+            icon={<Search className="text-green-600" />}
+            title="Salas"
+            description="Status real"
+            onClick={() => onNavigate('salas')}
+            color="bg-green-50"
+            compact
+          />
+          <ModuleCard 
+            icon={<Users className="text-orange-600" />}
+            title="Filas"
+            description="Senha virtual"
+            onClick={() => onNavigate('filas')}
+            color="bg-orange-50"
+            compact
+          />
+        </div>
+      </div>
+
+      <div className="relative overflow-hidden bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
+        <div className="absolute top-0 right-0 p-4 opacity-10">
+          <AlertCircle size={80} />
+        </div>
+        <div className="relative z-10 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            <h3 className="font-bold text-sm uppercase tracking-widest text-red-500">Destaque Urgente</h3>
+          </div>
+          <p className="font-bold text-xl leading-tight">Manutenção no Bloco B: Aulas realocadas para o Bloco C hoje.</p>
+          <button 
+            onClick={() => onNavigate('campus-news')}
+            className="flex items-center gap-2 text-sm font-bold group"
+          >
+            Ler comunicado completo
+            <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-function ModuleCard({ icon, title, description, onClick }: { icon: React.ReactNode, title: string, description: string, onClick: () => void }) {
+function ModuleCard({ 
+  icon, 
+  title, 
+  description, 
+  onClick, 
+  color = "bg-gray-50",
+  compact = false 
+}: { 
+  icon: React.ReactNode, 
+  title: string, 
+  description: string, 
+  onClick: () => void,
+  color?: string,
+  compact?: boolean
+}) {
   return (
     <button 
       onClick={onClick}
-      className="w-full text-left bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all group"
+      className={`w-full text-left bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all group relative overflow-hidden ${compact ? 'flex flex-col justify-between h-44' : ''}`}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="p-3 bg-gray-50 rounded-2xl group-hover:scale-110 transition-transform">
+      <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-0 group-hover:opacity-10 transition-opacity ${color}`} />
+      
+      <div className="space-y-4 relative z-10">
+        <div className={`p-4 ${color} rounded-2xl inline-flex group-hover:scale-110 transition-transform duration-300`}>
           {icon}
         </div>
-        <ChevronRight size={20} className="text-gray-300 group-hover:text-black transition-colors" />
+        <div>
+          <h3 className={`${compact ? 'text-lg' : 'text-2xl'} font-bold mb-1 group-hover:text-black transition-colors`}>{title}</h3>
+          <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+        </div>
       </div>
-      <h3 className="text-xl font-bold mb-1">{title}</h3>
-      <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+      
+      {!compact && (
+        <div className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-300 group-hover:text-black transition-colors">
+          Acessar módulo
+          <ChevronRight size={14} />
+        </div>
+      )}
     </button>
   );
 }
@@ -220,7 +265,7 @@ function JornalView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => 
     >
       <div className="flex items-center gap-4">
         <button onClick={() => onNavigate('home')} className="p-2 hover:bg-gray-100 rounded-full"><ArrowLeft size={20} /></button>
-        <h2 className="text-2xl font-bold">Jornal Digital</h2>
+        <h2 className="text-2xl font-bold">Campus News</h2>
       </div>
 
       <div className="space-y-4">
