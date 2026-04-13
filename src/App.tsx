@@ -144,69 +144,123 @@ function MenuLink({ icon, label, onClick }: { icon: React.ReactNode, label: stri
 function HomeView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => void }) {
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="p-6 space-y-10"
+      exit={{ opacity: 0, y: -15 }}
+      className="p-6 space-y-12"
     >
-      <div className="space-y-3">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[10px] font-bold uppercase tracking-wider">
-          <Activity size={12} />
-          Campus Online
-        </div>
-        <h2 className="text-4xl font-extrabold tracking-tight leading-none">
-          Olá, <span className="text-gray-400">Estudante</span>
-        </h2>
-        <p className="text-gray-500 text-lg leading-snug">
-          Bem-vindo ao Campus News. Tudo o que você precisa para navegar no campus hoje.
-        </p>
-      </div>
-
-      <div className="grid gap-5">
-        <ModuleCard 
-          icon={<Newspaper className="text-blue-600" />}
-          title="Campus News"
-          description="Fique por dentro de eventos, editais e avisos."
-          onClick={() => onNavigate('campus-news')}
-          color="bg-blue-50"
-        />
-        <div className="grid grid-cols-2 gap-5">
-          <ModuleCard 
-            icon={<Search className="text-green-600" />}
-            title="Salas"
-            description="Status real"
-            onClick={() => onNavigate('salas')}
-            color="bg-green-50"
-            compact
-          />
-          <ModuleCard 
-            icon={<Users className="text-orange-600" />}
-            title="Filas"
-            description="Senha virtual"
-            onClick={() => onNavigate('filas')}
-            color="bg-orange-50"
-            compact
-          />
-        </div>
-      </div>
-
-      <div className="relative overflow-hidden bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
-        <div className="absolute top-0 right-0 p-4 opacity-10">
-          <AlertCircle size={80} />
-        </div>
-        <div className="relative z-10 space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-            <h3 className="font-bold text-sm uppercase tracking-widest text-red-500">Destaque Urgente</h3>
+      {/* Header Greeting */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-black text-white rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-black/20">
+            <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            Campus Online
           </div>
-          <p className="font-bold text-xl leading-tight">Manutenção no Bloco B: Aulas realocadas para o Bloco C hoje.</p>
-          <button 
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' })}
+          </div>
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-5xl font-black tracking-tighter leading-[0.9] text-[#141414]">
+            Olá,<br />
+            <span className="text-gray-300">Estudante</span>
+          </h2>
+          <p className="text-gray-400 text-lg font-medium tracking-tight">
+            Seu dia no campus começa aqui.
+          </p>
+        </div>
+      </div>
+
+      {/* Urgent Highlight - More Striking */}
+      <motion.div 
+        whileHover={{ scale: 1.02 }}
+        onClick={() => onNavigate('campus-news')}
+        className="group relative overflow-hidden bg-red-50 p-1 rounded-[32px] cursor-pointer"
+      >
+        <div className="bg-white p-6 rounded-[31px] border border-red-100 shadow-sm relative overflow-hidden">
+          <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+            <AlertCircle size={140} className="text-red-600 rotate-12" />
+          </div>
+          
+          <div className="relative z-10 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              </span>
+              <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-red-500">Urgente</h3>
+            </div>
+            <p className="font-bold text-xl leading-tight text-gray-900 group-hover:text-red-600 transition-colors">
+              Manutenção no Bloco B: Aulas realocadas para o Bloco C hoje.
+            </p>
+            <div className="flex items-center gap-2 text-xs font-bold text-red-500/60 group-hover:text-red-500 transition-colors">
+              Toque para ver detalhes
+              <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Modules Grid - Bento Style */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="font-black text-xs uppercase tracking-widest text-gray-400">Serviços</h3>
+          <div className="h-px flex-1 bg-gray-100 mx-4" />
+        </div>
+        
+        <div className="grid gap-5">
+          <ModuleCard 
+            icon={<Newspaper className="text-blue-600" />}
+            title="Campus News"
+            description="Fique por dentro de eventos, editais e avisos importantes."
             onClick={() => onNavigate('campus-news')}
-            className="flex items-center gap-2 text-sm font-bold group"
-          >
-            Ler comunicado completo
-            <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
-          </button>
+            color="bg-blue-50"
+            iconColor="text-blue-600"
+          />
+          <div className="grid grid-cols-2 gap-5">
+            <ModuleCard 
+              icon={<Search className="text-green-600" />}
+              title="Salas"
+              description="Status em tempo real"
+              onClick={() => onNavigate('salas')}
+              color="bg-green-50"
+              iconColor="text-green-600"
+              compact
+            />
+            <ModuleCard 
+              icon={<Users className="text-orange-600" />}
+              title="Filas"
+              description="Senha virtual"
+              onClick={() => onNavigate('filas')}
+              color="bg-orange-50"
+              iconColor="text-orange-600"
+              compact
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Campus Pulse - New Section */}
+      <div className="bg-gray-100/50 p-6 rounded-[32px] space-y-4">
+        <h3 className="font-black text-[10px] uppercase tracking-widest text-gray-400 flex items-center gap-2">
+          <Activity size={12} />
+          Campus Pulse
+        </h3>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <div className="text-2xl font-black tracking-tighter">85%</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase">Ocupação Média</div>
+          </div>
+          <div className="h-8 w-px bg-gray-200" />
+          <div className="space-y-1">
+            <div className="text-2xl font-black tracking-tighter">12 min</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase">Espera Média</div>
+          </div>
+          <div className="h-8 w-px bg-gray-200" />
+          <div className="space-y-1">
+            <div className="text-2xl font-black tracking-tighter">04</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase">Eventos Hoje</div>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -219,6 +273,7 @@ function ModuleCard({
   description, 
   onClick, 
   color = "bg-gray-50",
+  iconColor = "text-gray-600",
   compact = false 
 }: { 
   icon: React.ReactNode, 
@@ -226,32 +281,40 @@ function ModuleCard({
   description: string, 
   onClick: () => void,
   color?: string,
+  iconColor?: string,
   compact?: boolean
 }) {
   return (
-    <button 
+    <motion.button 
+      whileHover={{ y: -4 }}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className={`w-full text-left bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all group relative overflow-hidden ${compact ? 'flex flex-col justify-between h-44' : ''}`}
+      className={`w-full text-left bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-black/5 transition-all group relative overflow-hidden ${compact ? 'flex flex-col justify-between h-48' : ''}`}
     >
-      <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-0 group-hover:opacity-10 transition-opacity ${color}`} />
+      {/* Decorative Background Element */}
+      <div className={`absolute -right-4 -bottom-4 w-32 h-32 rounded-full opacity-0 group-hover:opacity-[0.07] transition-all duration-500 scale-50 group-hover:scale-100 ${color}`} />
       
-      <div className="space-y-4 relative z-10">
-        <div className={`p-4 ${color} rounded-2xl inline-flex group-hover:scale-110 transition-transform duration-300`}>
-          {icon}
+      <div className="space-y-5 relative z-10">
+        <div className={`p-4 ${color} rounded-2xl inline-flex group-hover:rotate-6 transition-transform duration-300`}>
+          {React.cloneElement(icon as React.ReactElement, { size: compact ? 20 : 24 })}
         </div>
-        <div>
-          <h3 className={`${compact ? 'text-lg' : 'text-2xl'} font-bold mb-1 group-hover:text-black transition-colors`}>{title}</h3>
-          <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+        <div className="space-y-1">
+          <h3 className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-tight group-hover:text-black transition-colors`}>
+            {title}
+          </h3>
+          <p className={`text-sm font-medium leading-tight ${compact ? 'text-gray-400' : 'text-gray-500'}`}>
+            {description}
+          </p>
         </div>
       </div>
       
       {!compact && (
-        <div className="mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-300 group-hover:text-black transition-colors">
+        <div className="mt-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-300 group-hover:text-black transition-all">
           Acessar módulo
-          <ChevronRight size={14} />
+          <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
         </div>
       )}
-    </button>
+    </motion.button>
   );
 }
 
