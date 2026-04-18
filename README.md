@@ -8,13 +8,12 @@
 - **Frase de Propósito:** "Conectando o campus, otimizando o tempo e simplificando a vida acadêmica."
 
 ### Identidade Visual Inicial
-- **Paleta de Cores:**
-  - Primária: `#141414` (Preto Profundo - Confiança e Autoridade)
-  - Secundária: `#F5F5F5` (Cinza Claro - Limpeza e Foco)
-  - Acento 1: `#3B82F6` (Azul - Eventos e Tecnologia)
-  - Acento 2: `#10B981` (Verde - Disponibilidade e Sucesso)
-  - Acento 3: `#F97316` (Laranja - Alerta e Filas)
-  - Erro/Urgente: `#EF4444` (Vermelho)
+- **Paleta de Cores (Tema Claro Refinado):**
+  - Fundo Principal: `#F1F5F9` (Slate 100)
+  - Superfícies: `#FFFFFF` (Branco)
+  - Texto Principal: `#0F172A` (Slate 900)
+  - Azul Darker: `#1D4ED8` (Blue 700)
+  - Erro: `#DC2626` (Red 600)
 - **Estilo:** Moderno, minimalista, com bordas arredondadas (24px-32px) para um toque amigável e contemporâneo.
 - **Tipografia:** Inter (Sans-serif) para legibilidade em telas mobile. JetBrains Mono para dados técnicos e senhas.
 
@@ -26,22 +25,41 @@
 5. **Módulo 2 (Salas):** Filtro -> Lista de resultados -> Status em tempo real.
 6. **Módulo 3 (Filas):** Seleção de setor -> Confirmação -> Acompanhamento em tempo real.
 
-### Diagrama de Caso de Uso (Mermaid)
+### Diagramas do Sistema
+
+#### Diagrama de Casos de Uso
 ```mermaid
 graph TD
-    Aluno((Aluno))
-    Prof((Professor))
+    User((Usuário))
     Admin((Administrador))
+    
+    User --> News[Ver Notícias]
+    User --> Rooms[Consultar Salas]
+    User --> Queue[Entrar na Fila]
+    
+    Admin --> Dashboard[Painel Admin]
+    Admin --> ManageNews[Gerenciar Notícias]
+    Admin --> ManageQueue[Gerenciar Filas]
+```
 
-    Aluno --> ViewNews[Visualizar Comunicados]
-    Aluno --> ConsultRooms[Consultar Salas]
-    Aluno --> JoinQueue[Entrar na Fila]
+#### Fluxograma do Usuário
+```mermaid
+flowchart TD
+    Start([Início]) --> Home{Página Inicial}
     
-    Prof --> ConsultRooms
+    Home --> News[Campus News]
+    News --> Detail[Detalhes da Notícia]
+    Detail --> News
     
-    Admin --> ManageContent[Gerenciar Conteúdo]
-    Admin --> ViewDashboard[Ver Dashboard Analítico]
-    Admin --> ManageQueue[Gerenciar Fila]
+    Home --> Rooms[Consultar Salas]
+    Rooms --> Search[Filtrar por Sala/Bloco]
+    Search --> Rooms
+    
+    Home --> Queue[Gestão de Filas]
+    Queue --> Select[Selecionar Setor]
+    Select --> Join[Entrar na Fila]
+    Join --> Ticket[Senha Virtual]
+    Ticket --> Waiting[Acompanhamento Real-time]
 ```
 
 ---
