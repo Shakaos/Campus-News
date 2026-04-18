@@ -28,19 +28,16 @@ import { MOCK_NEWS, MOCK_ROOMS, MOCK_SECTORS } from './constants';
 /*
 DIAGRAMA DE CASO DE USO (Mermaid)
 graph TD
-    Aluno((Aluno))
-    Prof((Professor))
-    Admin((Administrador))
+    User((🧑‍🎓 Usuário))
+    Admin((👨‍💼 Administrador))
 
-    Aluno --> ViewNews[Visualizar Comunicados]
-    Aluno --> ConsultRooms[Consultar Salas]
-    Aluno --> JoinQueue[Entrar na Fila]
+    User --> ViewNews[📰 Visualizar Comunicados]
+    User --> ConsultRooms[🏫 Consultar Salas]
+    User --> JoinQueue[👥 Entrar na Fila]
     
-    Prof --> ConsultRooms
-    
-    Admin --> ManageContent[Gerenciar Conteúdo]
-    Admin --> ViewDashboard[Ver Dashboard Analítico]
-    Admin --> ManageQueue[Gerenciar Fila]
+    Admin --> ManageContent[📝 Gerenciar Conteúdo]
+    Admin --> ViewDashboard[📊 Ver Dashboard Analítico]
+    Admin --> ManageQueue[🎫 Gerenciar Fila]
 */
 
 export default function App() {

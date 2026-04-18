@@ -30,36 +30,36 @@
 #### Diagrama de Casos de Uso
 ```mermaid
 graph TD
-    User((Usuário))
-    Admin((Administrador))
+    User((🧑‍🎓 Usuário))
+    Admin((👨‍💼 Administrador))
     
-    User --> News[Ver Notícias]
-    User --> Rooms[Consultar Salas]
-    User --> Queue[Entrar na Fila]
+    User --> News[📰 Ver Notícias]
+    User --> Rooms[🏫 Consultar Salas]
+    User --> Queue[👥 Entrar na Fila]
     
-    Admin --> Dashboard[Painel Admin]
-    Admin --> ManageNews[Gerenciar Notícias]
-    Admin --> ManageQueue[Gerenciar Filas]
+    Admin --> Dashboard[📊 Painel Admin]
+    Admin --> ManageNews[📝 Gerenciar Notícias]
+    Admin --> ManageQueue[🎫 Gerenciar Filas]
 ```
 
 #### Fluxograma do Usuário
 ```mermaid
 flowchart TD
-    Start([Início]) --> Home{Página Inicial}
+    Start([🧑‍🎓 Início]) --> Home{Página Inicial}
     
-    Home --> News[Campus News]
-    News --> Detail[Detalhes da Notícia]
+    Home --> News[📰 Campus News]
+    News --> Detail[🔍 Detalhes da Notícia]
     Detail --> News
     
-    Home --> Rooms[Consultar Salas]
-    Rooms --> Search[Filtrar por Sala/Bloco]
+    Home --> Rooms[🏫 Consultar Salas]
+    Rooms --> Search[🔎 Filtrar por Sala/Bloco]
     Search --> Rooms
     
-    Home --> Queue[Gestão de Filas]
-    Queue --> Select[Selecionar Setor]
-    Select --> Join[Entrar na Fila]
-    Join --> Ticket[Senha Virtual]
-    Ticket --> Waiting[Acompanhamento Real-time]
+    Home --> Queue[👥 Gestão de Filas]
+    Queue --> Select[📍 Selecionar Setor]
+    Select --> Join[✅ Entrar na Fila]
+    Join --> Ticket[🎫 Senha Virtual]
+    Ticket --> Waiting[⏳ Acompanhamento Real-time]
 ```
 
 ---
