@@ -20,9 +20,13 @@ import {
   Menu,
   X,
   TrendingUp,
-  Activity
+  Activity,
+  User as UserIcon,
+  Shield,
+  GraduationCap,
+  Key
 } from 'lucide-react';
-import { AppView, NewsItem, Room, QueueSector, QueueTicket } from './types';
+import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, Role } from './types';
 import { MOCK_NEWS, MOCK_ROOMS, MOCK_SECTORS } from './constants';
 
 /*
@@ -41,18 +45,56 @@ graph TD
 */
 
 export default function App() {
-  const [view, setView] = useState<AppView>('home');
+  const [view, setView] = useState<AppView>('login');
+  const [user, setUser] = useState<User | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [activeTicket, setActiveTicket] = useState<QueueTicket | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Auto-login (mock)
+  useEffect(() => {
+    const savedUser = localStorage.getItem('campus_user');
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+      setView('home');
+    }
+  }, []);
+
+  const login = (role: Role) => {
+    const mockUser: User = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: role === 'admin' ? 'Admin Campus' : role === 'professor' ? 'Prof. Silva' : 'João Estudante',
+      email: `${role}@campus.edu`,
+      role
+    };
+    setUser(mockUser);
+    localStorage.setItem('campus_user', JSON.stringify(mockUser));
+    setView('home');
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('campus_user');
+    setView('login');
+    setIsMenuOpen(false);
+  };
+
   // Navigation helper
   const navigate = (newView: AppView, news?: NewsItem) => {
+    // Role protection
+    if (newView === 'admin' && user?.role !== 'admin') return;
+    if (newView === 'professor-dashboard' && user?.role !== 'professor') return;
+
     setView(newView);
     if (news) setSelectedNews(news);
     setIsMenuOpen(false);
     window.scrollTo(0, 0);
   };
+
+  if (view === 'login') {
+    return <LoginView onLogin={login} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
@@ -62,34 +104,70 @@ export default function App() {
           <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center shadow-lg shadow-blue-700/20">
             <span className="text-white font-bold text-xs">C</span>
           </div>
-          <h1 className="font-bold tracking-tight text-lg text-slate-900">Campus News</h1>
+          <div className="flex flex-col">
+            <h1 className="font-bold tracking-tight text-sm text-slate-900 leading-none">Campus News</h1>
+            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">{user?.role}</span>
+          </div>
         </div>
         
-        <button 
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600"
-        >
-          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="flex items-center gap-3">
+          {user && (
+            <div className="hidden md:flex flex-col items-end mr-2">
+              <span className="text-xs font-bold text-slate-900">{user.name}</span>
+              <span className="text-[10px] text-slate-500 uppercase font-black">{user.role}</span>
+            </div>
+          )}
+          <button 
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600"
+          >
+            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       {/* Mobile Menu Overlay */}
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="fixed inset-0 z-40 bg-white pt-20 px-6"
+            initial={{ opacity: 0, x: '100%' }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: '100%' }}
+            className="fixed inset-0 z-40 bg-white pt-20 px-6 flex flex-col"
           >
-            <nav className="flex flex-col gap-6">
+            <div className="mb-10 flex items-center gap-4 p-4 bg-slate-50 rounded-3xl">
+              <div className="w-12 h-12 bg-blue-700 rounded-2xl flex items-center justify-center text-white">
+                <UserIcon size={24} />
+              </div>
+              <div>
+                <h2 className="font-bold text-slate-900">{user?.name}</h2>
+                <p className="text-[10px] font-black uppercase text-blue-700 tracking-widest">{user?.role}</p>
+              </div>
+            </div>
+
+            <nav className="flex flex-col gap-4 flex-1">
               <MenuLink icon={<LayoutDashboard size={20} />} label="Início" onClick={() => navigate('home')} />
               <MenuLink icon={<Newspaper size={20} />} label="Campus News" onClick={() => navigate('campus-news')} />
               <MenuLink icon={<Search size={20} />} label="Consulta de Salas" onClick={() => navigate('salas')} />
               <MenuLink icon={<Users size={20} />} label="Gestão de Filas" onClick={() => navigate('filas')} />
+              
               <div className="h-px bg-slate-100 my-2" />
-              <MenuLink icon={<Activity size={20} />} label="Painel Administrativo" onClick={() => navigate('admin')} />
+              
+              {user?.role === 'admin' && (
+                <MenuLink icon={<Shield size={20} />} label="Painel Administrativo" onClick={() => navigate('admin')} />
+              )}
+              {user?.role === 'professor' && (
+                <MenuLink icon={<GraduationCap size={20} />} label="Painel do Professor" onClick={() => navigate('professor-dashboard')} />
+              )}
             </nav>
+
+            <button 
+              onClick={logout}
+              className="mt-auto mb-10 flex items-center gap-4 text-red-500 font-bold p-4 hover:bg-red-50 rounded-2xl transition-all"
+            >
+              <LogOut size={20} />
+              Sair da Conta
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -97,13 +175,14 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-md mx-auto pb-20">
         <AnimatePresence mode="wait">
-          {view === 'home' && <HomeView onNavigate={navigate} />}
+          {view === 'home' && <HomeView user={user!} onNavigate={navigate} />}
           {view === 'campus-news' && <JornalView onNavigate={navigate} />}
           {view === 'noticia' && selectedNews && <NewsDetailView news={selectedNews} onBack={() => navigate('campus-news')} />}
           {view === 'salas' && <SalasView onBack={() => navigate('home')} />}
           {view === 'filas' && <FilasView onJoin={(ticket) => { setActiveTicket(ticket); navigate('acompanhamento'); }} />}
           {view === 'acompanhamento' && activeTicket && <AcompanhamentoView ticket={activeTicket} onExit={() => { setActiveTicket(null); navigate('home'); }} />}
           {view === 'admin' && <AdminView onBack={() => navigate('home')} />}
+          {view === 'professor-dashboard' && <ProfessorDashboard onBack={() => navigate('home')} />}
         </AnimatePresence>
       </main>
 
@@ -140,7 +219,10 @@ function MenuLink({ icon, label, onClick }: { icon: React.ReactNode, label: stri
   );
 }
 
-function HomeView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => void }) {
+function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n?: NewsItem) => void }) {
+  const isProfessor = user.role === 'professor';
+  const isAdmin = user.role === 'admin';
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 15 }}
@@ -162,10 +244,10 @@ function HomeView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => vo
         <div className="space-y-1">
           <h2 className="text-5xl font-black tracking-tighter leading-[0.9] text-slate-900">
             Olá,<br />
-            <span className="text-blue-800">Estudante</span>
+            <span className="text-blue-800">{user.name.split(' ')[0]}</span>
           </h2>
           <p className="text-slate-500 text-lg font-medium tracking-tight">
-            Seu dia no campus começa aqui.
+            {isAdmin ? 'Controle total do campus.' : isProfessor ? 'Gerencie suas aulas e salas.' : 'Seu dia no campus começa aqui.'}
           </p>
         </div>
       </div>
@@ -203,27 +285,48 @@ function HomeView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => vo
       {/* Modules Grid - Bento Style */}
       <div className="space-y-6">
         <div className="flex items-center justify-between px-2">
-          <h3 className="font-black text-xs uppercase tracking-widest text-slate-400">Serviços Acadêmicos</h3>
+          <h3 className="font-black text-xs uppercase tracking-widest text-slate-400">Acesso Rápido</h3>
           <div className="h-px flex-1 bg-slate-200 mx-4" />
         </div>
         
         <div className="grid gap-5">
-          <ModuleCard 
-            icon={<Newspaper />}
-            title="Campus News"
-            description="Fique por dentro de eventos, editais e avisos importantes."
-            onClick={() => onNavigate('campus-news')}
-            color="bg-blue-700/10"
-            iconColor="text-blue-800"
-          />
+          {isAdmin ? (
+            <ModuleCard 
+              icon={<Shield />}
+              title="Administração"
+              description="Gerenciar notícias, filas e usuários."
+              onClick={() => onNavigate('admin')}
+              color="bg-slate-900 text-white"
+              iconColor="text-white"
+            />
+          ) : isProfessor ? (
+            <ModuleCard 
+              icon={<GraduationCap />}
+              title="Minhas Aulas"
+              description="Status de salas e horários."
+              onClick={() => onNavigate('professor-dashboard')}
+              color="bg-blue-900 text-white"
+              iconColor="text-white"
+            />
+          ) : (
+            <ModuleCard 
+              icon={<Newspaper />}
+              title="Campus News"
+              description="Fique por dentro de eventos e avisos."
+              onClick={() => onNavigate('campus-news')}
+              color="bg-blue-700/10"
+              iconColor="text-blue-800"
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-5">
             <ModuleCard 
               icon={<Search />}
               title="Salas"
-              description="Status em tempo real"
+              description="Status atual"
               onClick={() => onNavigate('salas')}
-              color="bg-emerald-600/10"
-              iconColor="text-emerald-600"
+              color="bg-emerald-700/10"
+              iconColor="text-emerald-700"
               compact
             />
             <ModuleCard 
@@ -231,8 +334,8 @@ function HomeView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => vo
               title="Filas"
               description="Senha virtual"
               onClick={() => onNavigate('filas')}
-              color="bg-orange-600/10"
-              iconColor="text-orange-600"
+              color="bg-orange-700/10"
+              iconColor="text-orange-700"
               compact
             />
           </div>
@@ -698,9 +801,10 @@ function AdminView({ onBack }: { onBack: () => void }) {
   );
 }
 
-function AdminActionButton({ label, color }: { label: string, color: string }) {
+function AdminActionButton({ label, color, icon }: { label: string, color: string, icon?: React.ReactNode }) {
   return (
-    <button className={`p-4 ${color} rounded-2xl text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all text-left shadow-sm`}>
+    <button className={`p-4 ${color} rounded-2xl text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all text-left shadow-sm flex flex-col gap-2`}>
+      {icon && <div className="opacity-80">{icon}</div>}
       {label}
     </button>
   );
@@ -708,7 +812,7 @@ function AdminActionButton({ label, color }: { label: string, color: string }) {
 
 function StatCard({ icon, label, value, trend }: { icon: React.ReactNode, label: string, value: string, trend: string }) {
   return (
-    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3 shrink-0">
       <div className="flex items-center justify-between text-slate-400">
         <div className="text-blue-700">{icon}</div>
         <span className={`text-[10px] font-black tracking-widest border px-1.5 py-0.5 rounded ${trend.startsWith('+') ? 'text-emerald-700 border-emerald-200 bg-emerald-100' : 'text-blue-700 border-blue-200 bg-blue-100'}`}>{trend}</span>
@@ -716,5 +820,127 @@ function StatCard({ icon, label, value, trend }: { icon: React.ReactNode, label:
       <div className="text-2xl font-black tracking-tighter text-slate-900">{value}</div>
       <div className="text-[10px] font-black uppercase tracking-widest text-slate-300">{label}</div>
     </div>
+  );
+}
+
+function LoginView({ onLogin }: { onLogin: (role: Role) => void }) {
+  return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white overflow-hidden relative">
+      {/* Background Decorative Elemets */}
+      <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl -mr-32 -mt-32" />
+      <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-600/10 rounded-full blur-3xl -ml-32 -mb-32" />
+
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-sm space-y-12 relative z-10"
+      >
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 bg-blue-700 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-blue-700/40">
+            <Key size={32} className="text-white" />
+          </div>
+          <h1 className="text-4xl font-black tracking-tighter">Campus<br/><span className="text-blue-500">Access</span></h1>
+          <p className="text-slate-400 font-medium">Selecione seu perfil para entrar</p>
+        </div>
+
+        <div className="space-y-4">
+          <LoginOption 
+            icon={<Shield size={24} />} 
+            label="Administrador" 
+            desc="Gestão e Monitoramento" 
+            color="bg-slate-800 hover:bg-slate-700 border-slate-700" 
+            onClick={() => onLogin('admin')} 
+          />
+          <LoginOption 
+            icon={<GraduationCap size={24} />} 
+            label="Professor" 
+            desc="Salas e Avaliações" 
+            color="bg-blue-800 hover:bg-blue-700 border-blue-700" 
+            onClick={() => onLogin('professor')} 
+          />
+          <LoginOption 
+            icon={<Users size={24} />} 
+            label="Aluno" 
+            desc="Serviços e Avisos" 
+            color="bg-white/10 hover:bg-white/20 border-white/10" 
+            onClick={() => onLogin('aluno')} 
+          />
+        </div>
+
+        <p className="text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+          v2.4.0 • Segurança Criptografada
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
+function LoginOption({ icon, label, desc, color, onClick }: any) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`w-full p-5 rounded-3xl border flex items-center gap-4 transition-all active:scale-95 ${color} text-left group`}
+    >
+      <div className="p-3 rounded-2xl bg-white/10 text-white group-hover:scale-110 transition-transform">
+        {icon}
+      </div>
+      <div>
+        <h3 className="font-bold text-lg leading-none mb-1">{label}</h3>
+        <p className="text-xs opacity-60 font-medium">{desc}</p>
+      </div>
+      <ChevronRight size={20} className="ml-auto opacity-40 group-hover:opacity-100 transition-opacity" />
+    </button>
+  );
+}
+
+function ProfessorDashboard({ onBack }: { onBack: () => void }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="p-6 space-y-8"
+    >
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
+        <h2 className="text-2xl font-bold text-slate-900">Painel do Professor</h2>
+      </div>
+
+      <div className="bg-blue-900 text-white p-8 rounded-[40px] space-y-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+        <div className="space-y-1">
+          <h3 className="text-3xl font-black tracking-tight">Sala B-102</h3>
+          <p className="opacity-70 font-bold uppercase text-[10px] tracking-widest">Aula Atual: Algoritmos II</p>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black uppercase opacity-60">Status</span>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+              <span className="font-bold">Em Aula</span>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] font-black uppercase opacity-60">Alunos</span>
+            <div className="font-bold">32 / 40</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard icon={<Clock size={16} />} label="Tempo Restante" value="45m" trend="Ontime" />
+        <StatCard icon={<Search size={16} />} label="Salas do Bloco" value="08 Free" trend="Live" />
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 px-2">Ferramentas Docentes</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <AdminActionButton label="Lista Presença" color="bg-white border-slate-200 text-slate-900" icon={<Users size={16} />} />
+          <AdminActionButton label="Reservar Lab" color="bg-white border-slate-200 text-slate-900" icon={<Calendar size={16} />} />
+          <AdminActionButton label="Avisos Turma" color="bg-white border-slate-200 text-slate-900" icon={<Newspaper size={16} />} />
+          <AdminActionButton label="Relatórios" color="bg-white border-slate-200 text-slate-900" icon={<TrendingUp size={16} />} />
+        </div>
+      </div>
+    </motion.div>
   );
 }

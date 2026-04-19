@@ -37,4 +37,13 @@ export interface QueueTicket {
   timestamp: string;
 }
 
-export type AppView = 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin';
+export type Role = 'aluno' | 'professor' | 'admin';
+
+export interface User {
+  id: string;
+  name: string;
+  role: Role;
+  email: string;
+}
+
+export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard';
