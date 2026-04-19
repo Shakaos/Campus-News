@@ -24,7 +24,9 @@ import {
   User as UserIcon,
   Shield,
   GraduationCap,
-  Key
+  Key,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, Role } from './types';
 import { MOCK_NEWS, MOCK_ROOMS, MOCK_SECTORS } from './constants';
@@ -824,6 +826,36 @@ function StatCard({ icon, label, value, trend }: { icon: React.ReactNode, label:
 }
 
 function LoginView({ onLogin }: { onLogin: (role: Role) => void }) {
+  const [step, setStep] = useState<'choice' | 'form'>('choice');
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [showHints, setShowHints] = useState(true);
+
+  const credentials: Record<Role, { user: string, pass: string }> = {
+    admin: { user: 'admin', pass: 'admin123' },
+    professor: { user: 'professor', pass: 'prof123' },
+    aluno: { user: 'aluno', pass: 'aluno123' }
+  };
+
+  const handleChoice = (role: Role) => {
+    setSelectedRole(role);
+    setStep('form');
+    setError('');
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRole) return;
+
+    if (username === credentials[selectedRole].user && password === credentials[selectedRole].pass) {
+      onLogin(selectedRole);
+    } else {
+      setError('Usuário ou senha incorretos.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white overflow-hidden relative">
       {/* Background Decorative Elemets */}
@@ -833,39 +865,144 @@ function LoginView({ onLogin }: { onLogin: (role: Role) => void }) {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm space-y-12 relative z-10"
+        className="w-full max-w-sm space-y-10 relative z-10"
       >
         <div className="text-center space-y-4">
           <div className="w-16 h-16 bg-blue-700 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-blue-700/40">
             <Key size={32} className="text-white" />
           </div>
           <h1 className="text-4xl font-black tracking-tighter">Campus<br/><span className="text-blue-500">Access</span></h1>
-          <p className="text-slate-400 font-medium">Selecione seu perfil para entrar</p>
         </div>
 
-        <div className="space-y-4">
-          <LoginOption 
-            icon={<Shield size={24} />} 
-            label="Administrador" 
-            desc="Gestão e Monitoramento" 
-            color="bg-slate-800 hover:bg-slate-700 border-slate-700" 
-            onClick={() => onLogin('admin')} 
-          />
-          <LoginOption 
-            icon={<GraduationCap size={24} />} 
-            label="Professor" 
-            desc="Salas e Avaliações" 
-            color="bg-blue-800 hover:bg-blue-700 border-blue-700" 
-            onClick={() => onLogin('professor')} 
-          />
-          <LoginOption 
-            icon={<Users size={24} />} 
-            label="Aluno" 
-            desc="Serviços e Avisos" 
-            color="bg-white/10 hover:bg-white/20 border-white/10" 
-            onClick={() => onLogin('aluno')} 
-          />
-        </div>
+        <AnimatePresence mode="wait">
+          {step === 'choice' ? (
+            <motion.div 
+              key="choice"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-6"
+            >
+              <p className="text-slate-400 font-medium text-center">Selecione seu perfil para entrar</p>
+              <div className="space-y-4">
+                <LoginOption 
+                  icon={<Shield size={24} />} 
+                  label="Administrador" 
+                  desc="Gestão e Monitoramento" 
+                  color="bg-slate-800 hover:bg-slate-700 border-slate-700" 
+                  onClick={() => handleChoice('admin')} 
+                />
+                <LoginOption 
+                  icon={<GraduationCap size={24} />} 
+                  label="Professor" 
+                  desc="Salas e Avaliações" 
+                  color="bg-blue-800 hover:bg-blue-700 border-blue-700" 
+                  onClick={() => handleChoice('professor')} 
+                />
+                <LoginOption 
+                  icon={<Users size={24} />} 
+                  label="Aluno" 
+                  desc="Serviços e Avisos" 
+                  color="bg-white/10 hover:bg-white/20 border-white/10" 
+                  onClick={() => handleChoice('aluno')} 
+                />
+              </div>
+            </motion.div>
+          ) : (
+            <motion.form 
+              key="form"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              onSubmit={handleSubmit}
+              className="space-y-6"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <button 
+                  type="button" 
+                  onClick={() => setStep('choice')}
+                  className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div className="flex flex-col text-left">
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Login como</p>
+                  <p className="text-xl font-bold">{selectedRole === 'admin' ? 'Administrador' : selectedRole === 'professor' ? 'Professor' : 'Aluno'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Usuário</label>
+                  <input 
+                    type="text" 
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Seu usuário..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Senha</label>
+                  <input 
+                    type="password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Sua senha..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-red-400 text-sm font-bold text-center flex items-center justify-center gap-2"
+                >
+                  <AlertCircle size={14} />
+                  {error}
+                </motion.p>
+              )}
+
+              <button 
+                type="submit"
+                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 active:scale-[0.98] uppercase tracking-widest text-xs"
+              >
+                Entrar no Sistema
+              </button>
+
+              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 text-[10px] space-y-2 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <p className="text-slate-500 font-bold uppercase tracking-widest">Dicas de Acesso:</p>
+                  <button 
+                    type="button"
+                    onClick={() => setShowHints(!showHints)}
+                    className="p-1 hover:bg-white/10 rounded-md transition-colors text-slate-500 hover:text-white"
+                  >
+                    {showHints ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                
+                <AnimatePresence>
+                  {showHints && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="space-y-1 overflow-hidden"
+                    >
+                      <p className="text-slate-400">Usuário: <span className="text-blue-400">{credentials[selectedRole!].user}</span></p>
+                      <p className="text-slate-400">Senha: <span className="text-blue-400">{credentials[selectedRole!].pass}</span></p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
 
         <p className="text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
           v2.4.0 • Segurança Criptografada
