@@ -1,0 +1,45 @@
+version: '3.9'
+
+services:
+  # Backend API
+  api:
+    build: .
+    container_name: campus-news-api
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: development
+      PORT: 4001
+      JWT_SECRET: ${JWT_SECRET:-campus-news-dev-secret-change-in-production}
+      DATABASE_PATH: /app/data/campus-news.db
+    volumes:
+      - ./server:/app/server
+      - ./campus-news.db:/app/data/campus-news.db
+    command: npm run server
+    networks:
+      - campus-network
+
+  # Frontend
+  web:
+    image: node:20-alpine
+    container_name: campus-news-web
+    working_dir: /app
+    ports:
+      - "4173:4173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:4001/api
+    command: npm run dev
+    depends_on:
+      - api
+    networks:
+      - campus-network
+
+networks:
+  campus-network:
+    driver: bridge
+
+volumes:
+  db_data:

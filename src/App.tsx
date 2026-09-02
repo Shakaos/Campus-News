@@ -29,7 +29,11 @@ import {
   EyeOff
 } from 'lucide-react';
 import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, Role } from './types';
-import { MOCK_NEWS, MOCK_ROOMS, MOCK_SECTORS } from './constants';
+import { authApi, newsApi, queueApi, roomApi } from './api';
+import { AdminView } from './AdminView';
+import { AttendanceList, LabReservation, ClassNotices, Reports } from './ProfessorTools';
+import { ErrorBoundary, ErrorAlert } from './ErrorBoundary';
+import { useError } from './hooks';
 
 /*
 DIAGRAMA DE CASO DE USO (Mermaid)
@@ -52,31 +56,64 @@ export default function App() {
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [activeTicket, setActiveTicket] = useState<QueueTicket | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [sectors, setSectors] = useState<QueueSector[]>([]);
+  const { error, showError, clearError } = useError();
 
-  // Auto-login (mock)
   useEffect(() => {
-    const savedUser = localStorage.getItem('campus_user');
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser);
-      setUser(parsedUser);
-      setView('home');
-    }
-  }, []);
+    const boot = async () => {
+      const savedToken = localStorage.getItem('campus_token');
+      const savedUser = localStorage.getItem('campus_user');
 
-  const login = (role: Role) => {
-    const mockUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: role === 'admin' ? 'Admin Campus' : role === 'professor' ? 'Prof. Silva' : 'João Estudante',
-      email: `${role}@campus.edu`,
-      role
+      if (savedToken && savedUser) {
+        try {
+          const userData = JSON.parse(savedUser) as User;
+          setUser(userData);
+          setView('home');
+        } catch {
+          localStorage.removeItem('campus_token');
+          localStorage.removeItem('campus_user');
+        }
+      }
+
+      try {
+        const [newsData, roomsData, sectorsData] = await Promise.all([
+          newsApi.list(),
+          roomApi.list(),
+          queueApi.list(),
+        ]);
+
+        setNews(newsData);
+        setRooms(roomsData);
+        setSectors(sectorsData);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Erro ao carregar dados';
+        showError(message);
+      }
     };
-    setUser(mockUser);
-    localStorage.setItem('campus_user', JSON.stringify(mockUser));
-    setView('home');
+
+    void boot();
+  }, [showError]);
+
+  const login = async (role: Role, username?: string, password?: string) => {
+    try {
+      const response = await authApi.login(username ?? `${role}@campus.edu`, password ?? `${role}123`);
+      const nextUser: User = response.user;
+      setUser(nextUser);
+      localStorage.setItem('campus_token', response.token);
+      localStorage.setItem('campus_user', JSON.stringify(nextUser));
+      setView('home');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao fazer login';
+      showError(message);
+      throw error;
+    }
   };
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('campus_token');
     localStorage.removeItem('campus_user');
     setView('login');
     setIsMenuOpen(false);
@@ -95,12 +132,24 @@ export default function App() {
   };
 
   if (view === 'login') {
-    return <LoginView onLogin={login} />;
+    return (
+      <ErrorBoundary>
+        <LoginView onLogin={login} />
+      </ErrorBoundary>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
-      {/* Header */}
+    <ErrorBoundary>
+      <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
+        {/* Error Alert */}
+        {error && (
+          <div className="fixed top-4 right-4 z-[100] max-w-md">
+            <ErrorAlert message={error} onDismiss={clearError} />
+          </div>
+        )}
+
+        {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('home')}>
           <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center shadow-lg shadow-blue-700/20">
@@ -178,13 +227,17 @@ export default function App() {
       <main className="max-w-md mx-auto pb-20">
         <AnimatePresence mode="wait">
           {view === 'home' && <HomeView user={user!} onNavigate={navigate} />}
-          {view === 'campus-news' && <JornalView onNavigate={navigate} />}
+          {view === 'campus-news' && <JornalView onNavigate={navigate} news={news} />}
           {view === 'noticia' && selectedNews && <NewsDetailView news={selectedNews} onBack={() => navigate('campus-news')} />}
-          {view === 'salas' && <SalasView onBack={() => navigate('home')} />}
-          {view === 'filas' && <FilasView onJoin={(ticket) => { setActiveTicket(ticket); navigate('acompanhamento'); }} />}
-          {view === 'acompanhamento' && activeTicket && <AcompanhamentoView ticket={activeTicket} onExit={() => { setActiveTicket(null); navigate('home'); }} />}
+          {view === 'salas' && <SalasView rooms={rooms} onBack={() => navigate('home')} />}
+          {view === 'filas' && <FilasView sectors={sectors} onBack={() => navigate('home')} onJoin={async (ticket) => { setActiveTicket(ticket); navigate('acompanhamento'); }} />}
+          {view === 'acompanhamento' && activeTicket && <AcompanhamentoView sectors={sectors} ticket={activeTicket} onExit={() => { setActiveTicket(null); navigate('home'); }} />}
           {view === 'admin' && <AdminView onBack={() => navigate('home')} />}
-          {view === 'professor-dashboard' && <ProfessorDashboard onBack={() => navigate('home')} />}
+          {view === 'professor-dashboard' && <ProfessorDashboard onBack={() => navigate('home')} onSelectTool={(tool) => navigate(tool as AppView)} />}
+          {view === 'professor-attendance' && <AttendanceList onBack={() => navigate('professor-dashboard')} />}
+          {view === 'professor-lab' && <LabReservation onBack={() => navigate('professor-dashboard')} />}
+          {view === 'professor-notices' && <ClassNotices onBack={() => navigate('professor-dashboard')} />}
+          {view === 'professor-reports' && <Reports onBack={() => navigate('professor-dashboard')} />}
         </AnimatePresence>
       </main>
 
@@ -201,7 +254,8 @@ export default function App() {
           <button onClick={() => navigate('filas')} className={`p-2 transition-colors ${view === 'filas' || view === 'acompanhamento' ? 'text-blue-800 bg-blue-100 rounded-xl' : 'text-slate-400 hover:text-slate-600'}`}><Users size={24} /></button>
         </motion.div>
       )}
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }
 
@@ -422,7 +476,7 @@ function ModuleCard({
   );
 }
 
-function JornalView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => void }) {
+function JornalView({ onNavigate, news }: { onNavigate: (v: AppView, n?: NewsItem) => void, news: NewsItem[] }) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
@@ -436,11 +490,11 @@ function JornalView({ onNavigate }: { onNavigate: (v: AppView, n?: NewsItem) => 
       </div>
 
       <div className="space-y-4">
-        {MOCK_NEWS.map((news) => (
+        {news.map((newsItem) => (
           <NewsCard 
-            key={news.id} 
-            news={news} 
-            onClick={() => onNavigate('noticia', news)} 
+            key={newsItem.id} 
+            news={newsItem} 
+            onClick={() => onNavigate('noticia', newsItem)} 
           />
         ))}
       </div>
@@ -500,6 +554,24 @@ function NewsCard({ news, onClick }: NewsCardProps) {
 }
 
 function NewsDetailView({ news, onBack }: { news: NewsItem, onBack: () => void }) {
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleEventSubscription = async () => {
+    setIsLoading(true);
+    try {
+      // Simular inscrição em evento
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setIsSubscribed(true);
+      alert('Inscrição realizada com sucesso! Você receberá um email de confirmação.');
+    } catch (error) {
+      console.error('Erro ao se inscrever:', error);
+      alert('Erro ao realizar inscrição. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -529,8 +601,16 @@ function NewsDetailView({ news, onBack }: { news: NewsItem, onBack: () => void }
         <p className="text-slate-600 leading-relaxed whitespace-pre-wrap text-lg">{news.content}</p>
         
         {news.category === 'evento' && (
-          <button className="w-full bg-blue-700 text-white py-5 rounded-2xl font-bold hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/30 hover:scale-[1.01] active:scale-[0.99] mt-8 uppercase tracking-widest text-xs">
-            Inscrever-se no Evento
+          <button 
+            onClick={handleEventSubscription}
+            disabled={isSubscribed || isLoading}
+            className={`w-full py-5 rounded-2xl font-bold transition-all shadow-lg uppercase tracking-widest text-xs hover:scale-[1.01] active:scale-[0.99] ${
+              isSubscribed 
+                ? 'bg-emerald-600 text-white shadow-emerald-600/30 cursor-default'
+                : 'bg-blue-700 text-white shadow-blue-700/30 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed'
+            }`}
+          >
+            {isLoading ? 'Processando...' : isSubscribed ? '✓ Inscrito no Evento' : 'Inscrever-se no Evento'}
           </button>
         )}
       </div>
@@ -538,10 +618,10 @@ function NewsDetailView({ news, onBack }: { news: NewsItem, onBack: () => void }
   );
 }
 
-function SalasView({ onBack }: { onBack: () => void }) {
+function SalasView({ rooms, onBack }: { rooms: Room[], onBack: () => void }) {
   const [filter, setFilter] = useState('');
   
-  const filteredRooms = MOCK_ROOMS.filter(r => 
+  const filteredRooms = rooms.filter(r => 
     r.name.toLowerCase().includes(filter.toLowerCase()) || 
     r.building.toLowerCase().includes(filter.toLowerCase())
   );
@@ -614,23 +694,19 @@ function SalasView({ onBack }: { onBack: () => void }) {
   );
 }
 
-function FilasView({ onJoin }: { onJoin: (t: QueueTicket) => void }) {
+function FilasView({ sectors, onJoin, onBack }: { sectors: QueueSector[], onJoin: (t: QueueTicket) => void, onBack: () => void }) {
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (!selectedSector) return;
-    const sector = MOCK_SECTORS.find(s => s.id === selectedSector)!;
-    
-    const ticket: QueueTicket = {
-      id: Math.random().toString(36).substr(2, 9),
-      sectorId: selectedSector,
-      number: sector.currentNumber + sector.waitingCount + 1,
-      position: sector.waitingCount + 1,
-      estimatedTime: (sector.waitingCount + 1) * sector.averageServiceTime,
-      timestamp: new Date().toISOString()
-    };
-    
-    onJoin(ticket);
+
+    try {
+      const ticket = await queueApi.enter(selectedSector);
+      onJoin(ticket);
+    } catch (error) {
+      console.error('Erro ao entrar na fila:', error);
+      alert(error instanceof Error ? error.message : 'Erro ao entrar na fila.');
+    }
   };
 
   return (
@@ -641,14 +717,14 @@ function FilasView({ onJoin }: { onJoin: (t: QueueTicket) => void }) {
       className="p-6 space-y-6"
     >
       <div className="flex items-center gap-4">
-        <button onClick={() => window.history.back()} className="p-2 hover:bg-slate-200 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
+        <button onClick={onBack} className="p-2 hover:bg-slate-200 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
         <h2 className="text-2xl font-bold text-slate-900">Gestão de Filas</h2>
       </div>
 
       <p className="text-slate-500 font-medium">Selecione o setor que deseja atendimento para entrar na fila virtual.</p>
 
       <div className="space-y-4">
-        {MOCK_SECTORS.map((sector) => (
+        {sectors.map((sector) => (
           <button 
             key={sector.id}
             onClick={() => setSelectedSector(sector.id)}
@@ -689,8 +765,12 @@ function FilasView({ onJoin }: { onJoin: (t: QueueTicket) => void }) {
   );
 }
 
-function AcompanhamentoView({ ticket, onExit }: { ticket: QueueTicket, onExit: () => void }) {
-  const sector = MOCK_SECTORS.find(s => s.id === ticket.sectorId)!;
+function AcompanhamentoView({ sectors, ticket, onExit }: { sectors: QueueSector[], ticket: QueueTicket, onExit: () => void }) {
+  const sector = useMemo(() => {
+    return sectors.find(s => s.id === ticket.sectorId) ?? null;
+  }, [sectors, ticket.sectorId]);
+
+  if (!sector) return null;
   
   return (
     <motion.div 
@@ -742,70 +822,9 @@ function AcompanhamentoView({ ticket, onExit }: { ticket: QueueTicket, onExit: (
   );
 }
 
-function AdminView({ onBack }: { onBack: () => void }) {
+function AdminActionButton({ label, color, icon, onClick }: { label: string, color: string, icon?: React.ReactNode, onClick?: () => void }) {
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 15 }}
-      className="p-6 space-y-8"
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
-          <h2 className="text-2xl font-bold text-slate-900">Dashboard Admin</h2>
-        </div>
-        <button className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"><LogOut size={20} /></button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <StatCard icon={<Users size={16} />} label="Total Hoje" value="248" trend="+12%" />
-        <StatCard icon={<Clock size={16} />} label="Espera Média" value="14 min" trend="-2m" />
-      </div>
-
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold flex items-center gap-2 text-slate-900">
-            <TrendingUp size={18} className="text-emerald-700" />
-            Fluxo por Horário
-          </h3>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Últimas 24h</span>
-        </div>
-        
-        <div className="h-40 flex items-end justify-between gap-2">
-          {[40, 65, 80, 45, 30, 90, 70, 50].map((h, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-2">
-              <motion.div 
-                initial={{ height: 0 }}
-                animate={{ height: `${h}%` }}
-                className={`w-full rounded-t-lg ${h > 75 ? 'bg-red-500' : 'bg-blue-700'}`}
-              />
-              <span className="text-[8px] font-black text-slate-300">{8 + i*2}h</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 px-2">Ações Rápidas</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <AdminActionButton label="Nova Notícia" color="bg-blue-100 text-blue-800 border border-blue-200" />
-          <AdminActionButton label="Gerenciar Salas" color="bg-emerald-100 text-emerald-800 border border-emerald-200" />
-          <AdminActionButton label="Relatórios PDF" color="bg-slate-100 text-slate-600 border border-slate-200" />
-          <AdminActionButton label="Configurações" color="bg-slate-100 text-slate-600 border border-slate-200" />
-        </div>
-      </div>
-
-      <button className="w-full py-5 text-red-600 font-bold border border-red-200 bg-red-50 rounded-2xl hover:bg-red-100 transition-colors uppercase tracking-widest text-[10px]">
-        Encerrar Sessão
-      </button>
-    </motion.div>
-  );
-}
-
-function AdminActionButton({ label, color, icon }: { label: string, color: string, icon?: React.ReactNode }) {
-  return (
-    <button className={`p-4 ${color} rounded-2xl text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all text-left shadow-sm flex flex-col gap-2`}>
+    <button onClick={onClick} className={`p-4 ${color} rounded-2xl text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all text-left shadow-sm flex flex-col gap-2`}>
       {icon && <div className="opacity-80">{icon}</div>}
       {label}
     </button>
@@ -825,7 +844,7 @@ function StatCard({ icon, label, value, trend }: { icon: React.ReactNode, label:
   );
 }
 
-function LoginView({ onLogin }: { onLogin: (role: Role) => void }) {
+function LoginView({ onLogin }: { onLogin: (role: Role, username?: string, password?: string) => Promise<void> }) {
   const [step, setStep] = useState<'choice' | 'form'>('choice');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [username, setUsername] = useState('');
@@ -834,9 +853,9 @@ function LoginView({ onLogin }: { onLogin: (role: Role) => void }) {
   const [showHints, setShowHints] = useState(true);
 
   const credentials: Record<Role, { user: string, pass: string }> = {
-    admin: { user: 'admin', pass: 'admin123' },
-    professor: { user: 'professor', pass: 'prof123' },
-    aluno: { user: 'aluno', pass: 'aluno123' }
+    admin: { user: 'admin@campus.edu', pass: 'admin123' },
+    professor: { user: 'professor@campus.edu', pass: 'prof123' },
+    aluno: { user: 'aluno@campus.edu', pass: 'aluno123' }
   };
 
   const handleChoice = (role: Role) => {
@@ -845,14 +864,14 @@ function LoginView({ onLogin }: { onLogin: (role: Role) => void }) {
     setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) return;
 
-    if (username === credentials[selectedRole].user && password === credentials[selectedRole].pass) {
-      onLogin(selectedRole);
-    } else {
-      setError('Usuário ou senha incorretos.');
+    try {
+      await onLogin(selectedRole, username, password);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Usuário ou senha incorretos.');
     }
   };
 
@@ -1030,7 +1049,7 @@ function LoginOption({ icon, label, desc, color, onClick }: any) {
   );
 }
 
-function ProfessorDashboard({ onBack }: { onBack: () => void }) {
+function ProfessorDashboard({ onBack, onSelectTool }: { onBack: () => void, onSelectTool: (tool: 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports') => void }) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
@@ -1072,10 +1091,10 @@ function ProfessorDashboard({ onBack }: { onBack: () => void }) {
       <div className="space-y-4">
         <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 px-2">Ferramentas Docentes</h3>
         <div className="grid grid-cols-2 gap-3">
-          <AdminActionButton label="Lista Presença" color="bg-white border-slate-200 text-slate-900" icon={<Users size={16} />} />
-          <AdminActionButton label="Reservar Lab" color="bg-white border-slate-200 text-slate-900" icon={<Calendar size={16} />} />
-          <AdminActionButton label="Avisos Turma" color="bg-white border-slate-200 text-slate-900" icon={<Newspaper size={16} />} />
-          <AdminActionButton label="Relatórios" color="bg-white border-slate-200 text-slate-900" icon={<TrendingUp size={16} />} />
+          <AdminActionButton label="Lista Presença" color="bg-white border-slate-200 text-slate-900" icon={<Users size={16} />} onClick={() => onSelectTool('professor-attendance')} />
+          <AdminActionButton label="Reservar Lab" color="bg-white border-slate-200 text-slate-900" icon={<Calendar size={16} />} onClick={() => onSelectTool('professor-lab')} />
+          <AdminActionButton label="Avisos Turma" color="bg-white border-slate-200 text-slate-900" icon={<Newspaper size={16} />} onClick={() => onSelectTool('professor-notices')} />
+          <AdminActionButton label="Relatórios" color="bg-white border-slate-200 text-slate-900" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-reports')} />
         </div>
       </div>
     </motion.div>

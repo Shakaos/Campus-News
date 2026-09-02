@@ -1,5 +1,57 @@
 # Campus News - Portal Inteligente Institucional com Gestão de Fluxo Acadêmico
 
+App web + mobile a partir do protótipo [Campus-News](https://github.com/Shakaos/Campus-News).
+
+## Como executar
+
+Este PC usa Node.js portátil em `%USERPROFILE%\.local\node` (a instalação pelo Windows foi cancelada). No PowerShell:
+
+```powershell
+$env:PATH = "$env:USERPROFILE\.local\node;$env:PATH"
+cd $env:USERPROFILE\Campus-News-App
+npm install
+npm run dev
+```
+
+Abra `http://localhost:3000`.
+
+### Web (PWA)
+
+O build gera um app instalável no Chrome/Edge (menu **Instalar Campus News**).
+
+```powershell
+npm run build
+npm run preview
+```
+
+### Android
+
+Precisa do [Android Studio](https://developer.android.com/studio). Depois:
+
+```powershell
+npm run mobile:android
+```
+
+Isso gera o `dist`, sincroniza o Capacitor e abre o projeto nativo.
+
+### iOS
+
+O código iOS fica pronto, mas **só compila em um Mac** com Xcode:
+
+```bash
+npm run mobile:ios
+```
+
+### Logins de demonstração
+
+| Perfil | Usuário | Senha |
+| --- | --- | --- |
+| Administrador | `admin` | `admin123` |
+| Professor | `professor` | `prof123` |
+| Aluno | `aluno` | `aluno123` |
+
+---
+
 ## Parte 1 – Rascunho Digital
 
 ### Base do Projeto

@@ -1,0 +1,17 @@
+run = "npm run server"
+entrypoint = "server/index.ts"
+
+[nix]
+channel = "stable-23_11"
+
+[[ports]]
+localPort = 4001
+externalPort = 80
+expose = "true"
+
+[env]
+PORT = "4001"
+NODE_ENV = "production"
+
+[deployment]
+run = ["npm", "ci", "--production"]

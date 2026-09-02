@@ -46,4 +46,4 @@ export interface User {
   email: string;
 }
 
-export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard';
+export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard' | 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports';
