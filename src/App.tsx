@@ -25,10 +25,10 @@ import {
   Shield,
   GraduationCap,
   Key,
-  Eye,
-  EyeOff
+  Sun,
+  Moon
 } from 'lucide-react';
-import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, Role } from './types';
+import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, CourseSubject, GradeRecord } from './types';
 import { authApi, newsApi, queueApi, roomApi } from './api';
 import { AdminView } from './AdminView';
 import { AttendanceList, LabReservation, ClassNotices, Reports } from './ProfessorTools';
@@ -59,7 +59,56 @@ export default function App() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [sectors, setSectors] = useState<QueueSector[]>([]);
+  const [subjects, setSubjects] = useState<CourseSubject[]>(() => {
+    const saved = localStorage.getItem('campus_subjects');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as CourseSubject[];
+      } catch {
+        localStorage.removeItem('campus_subjects');
+      }
+    }
+
+    return [
+      { id: 'alg', name: 'Algoritmos II', teacher: 'Prof. Souza', schedule: 'Ter e Qui • 08:00', workload: 80, credits: 4 },
+      { id: 'bd', name: 'Banco de Dados', teacher: 'Prof. Lima', schedule: 'Seg e Qua • 10:00', workload: 80, credits: 4 },
+      { id: 'eng', name: 'Engenharia de Software', teacher: 'Prof. Rocha', schedule: 'Qua e Sex • 14:00', workload: 60, credits: 3 }
+    ];
+  });
+  const [grades, setGrades] = useState<GradeRecord[]>(() => {
+    const saved = localStorage.getItem('campus_grades');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as GradeRecord[];
+      } catch {
+        localStorage.removeItem('campus_grades');
+      }
+    }
+
+    return [
+      { id: 'g1', studentId: 'me', studentName: 'Aluno', subjectId: 'alg', subjectName: 'Algoritmos II', value: 8.4, period: '1º Bimestre', status: 'Aprovado' },
+      { id: 'g2', studentId: 'me', studentName: 'Aluno', subjectId: 'bd', subjectName: 'Banco de Dados', value: 7.1, period: '1º Bimestre', status: 'Aprovado' },
+      { id: 'g3', studentId: 'me', studentName: 'Aluno', subjectId: 'eng', subjectName: 'Engenharia de Software', value: 6.3, period: '1º Bimestre', status: 'Recuperação' }
+    ];
+  });
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('campus_theme');
+    return savedTheme === 'dark' ? 'dark' : 'light';
+  });
   const { error, showError, clearError } = useError();
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('campus_theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('campus_subjects', JSON.stringify(subjects));
+  }, [subjects]);
+
+  useEffect(() => {
+    localStorage.setItem('campus_grades', JSON.stringify(grades));
+  }, [grades]);
 
   useEffect(() => {
     const boot = async () => {
@@ -96,9 +145,9 @@ export default function App() {
     void boot();
   }, [showError]);
 
-  const login = async (role: Role, username?: string, password?: string) => {
+  const login = async (username: string, password: string) => {
     try {
-      const response = await authApi.login(username ?? `${role}@campus.edu`, password ?? `${role}123`);
+      const response = await authApi.login(username, password);
       const nextUser: User = response.user;
       setUser(nextUser);
       localStorage.setItem('campus_token', response.token);
@@ -134,14 +183,21 @@ export default function App() {
   if (view === 'login') {
     return (
       <ErrorBoundary>
-        <LoginView onLogin={login} />
+        <LoginView onLogin={login} onRegister={async (name, email, password) => {
+          const response = await authApi.register(name, email, password);
+          setUser(response.user);
+          localStorage.setItem('campus_token', response.token);
+          localStorage.setItem('campus_user', JSON.stringify(response.user));
+          setView('home');
+        }} />
       </ErrorBoundary>
     );
   }
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
+      <div className={theme === 'dark' ? 'dark' : ''}>
+        <div className="min-h-screen bg-slate-100 font-sans text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100">
         {/* Error Alert */}
         {error && (
           <div className="fixed top-4 right-4 z-[100] max-w-md">
@@ -150,13 +206,13 @@ export default function App() {
         )}
 
         {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm dark:bg-slate-900/80 dark:border-slate-700 dark:text-slate-100">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('home')}>
           <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center shadow-lg shadow-blue-700/20">
             <span className="text-white font-bold text-xs">C</span>
           </div>
           <div className="flex flex-col">
-            <h1 className="font-bold tracking-tight text-sm text-slate-900 leading-none">Campus News</h1>
+            <h1 className="font-bold tracking-tight text-sm text-slate-900 leading-none dark:text-white">Campus News</h1>
             <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">{user?.role}</span>
           </div>
         </div>
@@ -164,13 +220,21 @@ export default function App() {
         <div className="flex items-center gap-3">
           {user && (
             <div className="hidden md:flex flex-col items-end mr-2">
-              <span className="text-xs font-bold text-slate-900">{user.name}</span>
-              <span className="text-[10px] text-slate-500 uppercase font-black">{user.role}</span>
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{user.name}</span>
+              <span className="text-[10px] text-slate-500 uppercase font-black dark:text-slate-300">{user.role}</span>
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-2 rounded-full transition-colors text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            aria-label="Alternar tema"
+          >
+            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600"
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -224,7 +288,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="max-w-md mx-auto pb-20">
+      <main className="max-w-md mx-auto pb-20 dark:bg-slate-950">
         <AnimatePresence mode="wait">
           {view === 'home' && <HomeView user={user!} onNavigate={navigate} />}
           {view === 'campus-news' && <JornalView onNavigate={navigate} news={news} />}
@@ -238,6 +302,8 @@ export default function App() {
           {view === 'professor-lab' && <LabReservation onBack={() => navigate('professor-dashboard')} />}
           {view === 'professor-notices' && <ClassNotices onBack={() => navigate('professor-dashboard')} />}
           {view === 'professor-reports' && <Reports onBack={() => navigate('professor-dashboard')} />}
+          {view === 'professor-grades' && <ProfessorGradesView onBack={() => navigate('professor-dashboard')} grades={grades} setGrades={setGrades} subjects={subjects} />}
+          {view === 'student-performance' && <StudentPerformanceView onBack={() => navigate('home')} userName={user?.name ?? 'Aluno'} grades={grades} subjects={subjects} />}
         </AnimatePresence>
       </main>
 
@@ -254,6 +320,7 @@ export default function App() {
           <button onClick={() => navigate('filas')} className={`p-2 transition-colors ${view === 'filas' || view === 'acompanhamento' ? 'text-blue-800 bg-blue-100 rounded-xl' : 'text-slate-400 hover:text-slate-600'}`}><Users size={24} /></button>
         </motion.div>
       )}
+        </div>
       </div>
     </ErrorBoundary>
   );
@@ -365,14 +432,24 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
               iconColor="text-white"
             />
           ) : (
-            <ModuleCard 
-              icon={<Newspaper />}
-              title="Campus News"
-              description="Fique por dentro de eventos e avisos."
-              onClick={() => onNavigate('campus-news')}
-              color="bg-blue-700/10"
-              iconColor="text-blue-800"
-            />
+            <>
+              <ModuleCard
+                icon={<Newspaper />}
+                title="Campus News"
+                description="Fique por dentro de eventos e avisos."
+                onClick={() => onNavigate('campus-news')}
+                color="bg-blue-700/10"
+                iconColor="text-blue-800"
+              />
+              <ModuleCard
+                icon={<TrendingUp />}
+                title="Desempenho"
+                description="Veja suas matérias e notas."
+                onClick={() => onNavigate('student-performance')}
+                color="bg-emerald-700/10"
+                iconColor="text-emerald-700"
+              />
+            </>
           )}
 
           <div className="grid grid-cols-2 gap-5">
@@ -844,34 +921,30 @@ function StatCard({ icon, label, value, trend }: { icon: React.ReactNode, label:
   );
 }
 
-function LoginView({ onLogin }: { onLogin: (role: Role, username?: string, password?: string) => Promise<void> }) {
-  const [step, setStep] = useState<'choice' | 'form'>('choice');
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [username, setUsername] = useState('');
+function LoginView({
+  onLogin,
+  onRegister,
+}: {
+  onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (name: string, email: string, password: string) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [showHints, setShowHints] = useState(true);
-
-  const credentials: Record<Role, { user: string, pass: string }> = {
-    admin: { user: 'admin@campus.edu', pass: 'admin123' },
-    professor: { user: 'professor@campus.edu', pass: 'prof123' },
-    aluno: { user: 'aluno@campus.edu', pass: 'aluno123' }
-  };
-
-  const handleChoice = (role: Role) => {
-    setSelectedRole(role);
-    setStep('form');
-    setError('');
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRole) return;
 
     try {
-      await onLogin(selectedRole, username, password);
+      if (mode === 'register') {
+        await onRegister(name, email, password);
+      } else {
+        await onLogin(email, password);
+      }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Usuário ou senha incorretos.');
+      setError(error instanceof Error ? error.message : 'Não foi possível concluir a operação.');
     }
   };
 
@@ -894,133 +967,56 @@ function LoginView({ onLogin }: { onLogin: (role: Role, username?: string, passw
         </div>
 
         <AnimatePresence mode="wait">
-          {step === 'choice' ? (
-            <motion.div 
-              key="choice"
-              initial={{ opacity: 0, x: -20 }}
+          <motion.form
+              key={mode}
+              initial={{ opacity: 0, x: mode === 'login' ? -20 : 20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-6"
-            >
-              <p className="text-slate-400 font-medium text-center">Selecione seu perfil para entrar</p>
-              <div className="space-y-4">
-                <LoginOption 
-                  icon={<Shield size={24} />} 
-                  label="Administrador" 
-                  desc="Gestão e Monitoramento" 
-                  color="bg-slate-800 hover:bg-slate-700 border-slate-700" 
-                  onClick={() => handleChoice('admin')} 
-                />
-                <LoginOption 
-                  icon={<GraduationCap size={24} />} 
-                  label="Professor" 
-                  desc="Salas e Avaliações" 
-                  color="bg-blue-800 hover:bg-blue-700 border-blue-700" 
-                  onClick={() => handleChoice('professor')} 
-                />
-                <LoginOption 
-                  icon={<Users size={24} />} 
-                  label="Aluno" 
-                  desc="Serviços e Avisos" 
-                  color="bg-white/10 hover:bg-white/20 border-white/10" 
-                  onClick={() => handleChoice('aluno')} 
-                />
-              </div>
-            </motion.div>
-          ) : (
-            <motion.form 
-              key="form"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
+              exit={{ opacity: 0, x: mode === 'login' ? 20 : -20 }}
               onSubmit={handleSubmit}
               className="space-y-6"
             >
-              <div className="flex items-center gap-4 mb-4">
-                <button 
-                  type="button" 
-                  onClick={() => setStep('choice')}
-                  className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-                >
-                  <ArrowLeft size={18} />
+              <div className="flex rounded-2xl bg-slate-800 p-1">
+                <button type="button" onClick={() => { setMode('login'); setError(''); }} className={`flex-1 rounded-xl py-3 text-xs font-bold uppercase tracking-widest transition-colors ${mode === 'login' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                  Entrar
                 </button>
-                <div className="flex flex-col text-left">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Login como</p>
-                  <p className="text-xl font-bold">{selectedRole === 'admin' ? 'Administrador' : selectedRole === 'professor' ? 'Professor' : 'Aluno'}</p>
-                </div>
+                <button type="button" onClick={() => { setMode('register'); setError(''); }} className={`flex-1 rounded-xl py-3 text-xs font-bold uppercase tracking-widest transition-colors ${mode === 'register' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                  Criar conta
+                </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="text-center space-y-2">
+                <p className="text-slate-400 font-medium">{mode === 'login' ? 'Entre com sua conta do campus' : 'Crie sua conta de aluno'}</p>
+                {mode === 'register' && <p className="text-xs text-slate-500">Seu acesso será criado como aluno.</p>}
+              </div>
+
+              {mode === 'register' && (
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Usuário</label>
-                  <input 
-                    type="text" 
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Seu usuário..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all"
-                    required
-                  />
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nome completo</label>
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" required />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Senha</label>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Sua senha..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all"
-                    required
-                  />
-                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">E-mail</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@exemplo.com" className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" required />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Senha</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo de 6 caracteres" minLength={6} className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" required />
               </div>
 
               {error && (
-                <motion.p 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-red-400 text-sm font-bold text-center flex items-center justify-center gap-2"
-                >
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-400 text-sm font-bold text-center flex items-center justify-center gap-2">
                   <AlertCircle size={14} />
                   {error}
                 </motion.p>
               )}
 
-              <button 
-                type="submit"
-                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 active:scale-[0.98] uppercase tracking-widest text-xs"
-              >
-                Entrar no Sistema
+              <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 active:scale-[0.98] uppercase tracking-widest text-xs">
+                {mode === 'login' ? 'Entrar no sistema' : 'Criar minha conta'}
               </button>
-
-              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 text-[10px] space-y-2 relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <p className="text-slate-500 font-bold uppercase tracking-widest">Dicas de Acesso:</p>
-                  <button 
-                    type="button"
-                    onClick={() => setShowHints(!showHints)}
-                    className="p-1 hover:bg-white/10 rounded-md transition-colors text-slate-500 hover:text-white"
-                  >
-                    {showHints ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-                
-                <AnimatePresence>
-                  {showHints && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="space-y-1 overflow-hidden"
-                    >
-                      <p className="text-slate-400">Usuário: <span className="text-blue-400">{credentials[selectedRole!].user}</span></p>
-                      <p className="text-slate-400">Senha: <span className="text-blue-400">{credentials[selectedRole!].pass}</span></p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
             </motion.form>
-          )}
         </AnimatePresence>
 
         <p className="text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
@@ -1031,25 +1027,7 @@ function LoginView({ onLogin }: { onLogin: (role: Role, username?: string, passw
   );
 }
 
-function LoginOption({ icon, label, desc, color, onClick }: any) {
-  return (
-    <button 
-      onClick={onClick}
-      className={`w-full p-5 rounded-3xl border flex items-center gap-4 transition-all active:scale-95 ${color} text-left group`}
-    >
-      <div className="p-3 rounded-2xl bg-white/10 text-white group-hover:scale-110 transition-transform">
-        {icon}
-      </div>
-      <div>
-        <h3 className="font-bold text-lg leading-none mb-1">{label}</h3>
-        <p className="text-xs opacity-60 font-medium">{desc}</p>
-      </div>
-      <ChevronRight size={20} className="ml-auto opacity-40 group-hover:opacity-100 transition-opacity" />
-    </button>
-  );
-}
-
-function ProfessorDashboard({ onBack, onSelectTool }: { onBack: () => void, onSelectTool: (tool: 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports') => void }) {
+function ProfessorDashboard({ onBack, onSelectTool }: { onBack: () => void, onSelectTool: (tool: 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'student-performance') => void }) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
@@ -1095,7 +1073,125 @@ function ProfessorDashboard({ onBack, onSelectTool }: { onBack: () => void, onSe
           <AdminActionButton label="Reservar Lab" color="bg-white border-slate-200 text-slate-900" icon={<Calendar size={16} />} onClick={() => onSelectTool('professor-lab')} />
           <AdminActionButton label="Avisos Turma" color="bg-white border-slate-200 text-slate-900" icon={<Newspaper size={16} />} onClick={() => onSelectTool('professor-notices')} />
           <AdminActionButton label="Relatórios" color="bg-white border-slate-200 text-slate-900" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-reports')} />
+          <AdminActionButton label="Notas" color="bg-blue-100 border-blue-200 text-blue-800" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-grades')} />
+          <AdminActionButton label="Desempenho" color="bg-emerald-100 border-emerald-200 text-emerald-800" icon={<Activity size={16} />} onClick={() => onSelectTool('student-performance')} />
         </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function ProfessorGradesView({ onBack, grades, setGrades, subjects }: { onBack: () => void, grades: GradeRecord[], setGrades: React.Dispatch<React.SetStateAction<GradeRecord[]>>, subjects: CourseSubject[] }) {
+  const updateGrade = (id: string, nextValue: number) => {
+    setGrades(prev => prev.map(grade =>
+      grade.id === id
+        ? { ...grade, value: nextValue, status: nextValue >= 7 ? 'Aprovado' : nextValue >= 5 ? 'Recuperação' : 'Reprovado' }
+        : grade
+    ));
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
+        <h2 className="text-2xl font-bold text-slate-900">Lançamento de Notas</h2>
+      </div>
+
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Disciplinas ativas</p>
+        <div className="space-y-2">
+          {subjects.map(subject => (
+            <div key={subject.id} className="bg-white border border-slate-200 rounded-xl p-3">
+              <p className="font-bold text-slate-900">{subject.name}</p>
+              <p className="text-xs text-slate-500">{subject.teacher} • {subject.schedule}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {grades.map(grade => (
+          <div key={grade.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-slate-900">{grade.studentName}</p>
+                <p className="text-xs text-slate-500">{grade.subjectName} • {grade.period}</p>
+              </div>
+              <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${grade.status === 'Aprovado' ? 'bg-emerald-100 text-emerald-700' : grade.status === 'Recuperação' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                {grade.status}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={0.1}
+                value={grade.value}
+                onChange={(e) => updateGrade(grade.id, Number(e.target.value || 0))}
+                className="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm font-bold text-slate-500">/ 10</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+function StudentPerformanceView({ onBack, userName, grades, subjects }: { onBack: () => void, userName: string, grades: GradeRecord[], subjects: CourseSubject[] }) {
+  const average = (grades.reduce((sum, grade) => sum + grade.value, 0) / Math.max(grades.length, 1)).toFixed(1);
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
+        <h2 className="text-2xl font-bold text-slate-900">Desempenho e Matérias</h2>
+      </div>
+
+      <div className="bg-gradient-to-br from-blue-900 to-blue-700 text-white p-6 rounded-[32px] shadow-lg shadow-blue-900/20">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Média geral</p>
+        <p className="text-5xl font-black tracking-tight mt-2">{average}</p>
+        <p className="mt-3 text-sm opacity-85">Aluno: {userName}</p>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Matérias</h3>
+        {subjects.map(subject => (
+          <div key={subject.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-bold text-slate-900">{subject.name}</p>
+                <p className="text-xs text-slate-500">{subject.teacher}</p>
+              </div>
+              <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-2 py-1 rounded-full">{subject.credits} créditos</span>
+            </div>
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+              <span>{subject.schedule}</span>
+              <span>{subject.workload}h</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Notas</h3>
+        {grades.map(grade => (
+          <div key={grade.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-bold text-slate-900">{grade.subjectName}</p>
+              <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${grade.status === 'Aprovado' ? 'bg-emerald-100 text-emerald-700' : grade.status === 'Recuperação' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                {grade.status}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
+              <span>{grade.period}</span>
+              <span className="font-black text-slate-900">{grade.value.toFixed(1)}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </motion.div>
   );

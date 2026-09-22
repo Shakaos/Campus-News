@@ -83,6 +83,26 @@ db.exec(`
     date TEXT NOT NULL,
     timestamp TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS academic_subjects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    teacher TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    workload INTEGER NOT NULL,
+    credits INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS grades (
+    id TEXT PRIMARY KEY,
+    studentId TEXT NOT NULL,
+    studentName TEXT NOT NULL,
+    subjectId TEXT NOT NULL,
+    subjectName TEXT NOT NULL,
+    value REAL NOT NULL,
+    period TEXT NOT NULL,
+    status TEXT NOT NULL
+  );
 `);
 
 const seedUsers = [
@@ -260,6 +280,90 @@ if (countSectors.count === 0) {
   insertManySectors(seedSectors);
 }
 
+const seedSubjects = [
+  {
+    id: 'alg',
+    name: 'Algoritmos II',
+    teacher: 'Prof. Souza',
+    schedule: 'Ter e Qui • 08:00',
+    workload: 80,
+    credits: 4,
+  },
+  {
+    id: 'bd',
+    name: 'Banco de Dados',
+    teacher: 'Prof. Lima',
+    schedule: 'Seg e Qua • 10:00',
+    workload: 80,
+    credits: 4,
+  },
+  {
+    id: 'eng',
+    name: 'Engenharia de Software',
+    teacher: 'Prof. Rocha',
+    schedule: 'Qua e Sex • 14:00',
+    workload: 60,
+    credits: 3,
+  },
+];
+
+const countSubjects = db.prepare('SELECT COUNT(*) as count FROM academic_subjects').get() as { count: number };
+if (countSubjects.count === 0) {
+  const insertSubject = db.prepare(`
+    INSERT INTO academic_subjects (id, name, teacher, schedule, workload, credits)
+    VALUES (@id, @name, @teacher, @schedule, @workload, @credits)
+  `);
+  const insertManySubjects = db.transaction((rows) => {
+    for (const row of rows) insertSubject.run(row);
+  });
+  insertManySubjects(seedSubjects);
+}
+
+const seedGrades = [
+  {
+    id: 'grade-alg-1',
+    studentId: 'user-aluno-1',
+    studentName: 'João Estudante',
+    subjectId: 'alg',
+    subjectName: 'Algoritmos II',
+    value: 8.4,
+    period: '1º Bimestre',
+    status: 'Aprovado',
+  },
+  {
+    id: 'grade-bd-1',
+    studentId: 'user-aluno-1',
+    studentName: 'João Estudante',
+    subjectId: 'bd',
+    subjectName: 'Banco de Dados',
+    value: 7.1,
+    period: '1º Bimestre',
+    status: 'Aprovado',
+  },
+  {
+    id: 'grade-eng-1',
+    studentId: 'user-aluno-1',
+    studentName: 'João Estudante',
+    subjectId: 'eng',
+    subjectName: 'Engenharia de Software',
+    value: 6.3,
+    period: '1º Bimestre',
+    status: 'Recuperação',
+  },
+];
+
+const countGrades = db.prepare('SELECT COUNT(*) as count FROM grades').get() as { count: number };
+if (countGrades.count === 0) {
+  const insertGrade = db.prepare(`
+    INSERT INTO grades (id, studentId, studentName, subjectId, subjectName, value, period, status)
+    VALUES (@id, @studentId, @studentName, @subjectId, @subjectName, @value, @period, @status)
+  `);
+  const insertManyGrades = db.transaction((rows) => {
+    for (const row of rows) insertGrade.run(row);
+  });
+  insertManyGrades(seedGrades);
+}
+
 export type DbUser = {
   id: string;
   name: string;
@@ -296,4 +400,24 @@ export type DbQueueSector = {
   currentNumber: number;
   waitingCount: number;
   averageServiceTime: number;
+};
+
+export type DbSubject = {
+  id: string;
+  name: string;
+  teacher: string;
+  schedule: string;
+  workload: number;
+  credits: number;
+};
+
+export type DbGrade = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  subjectId: string;
+  subjectName: string;
+  value: number;
+  period: string;
+  status: 'Aprovado' | 'Recuperação' | 'Reprovado';
 };

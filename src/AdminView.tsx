@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Plus, Edit2, Trash2, X, Check } from 'lucide-react';
-import { newsApi, roomApi } from './api';
-import { NewsItem, Room } from './types';
+import { ArrowLeft, Plus, Edit2, Trash2, X, Check, UserPlus } from 'lucide-react';
+import { adminApi, newsApi, roomApi } from './api';
+import { NewsItem, Room, User } from './types';
 
 interface AdminViewProps {
   onBack: () => void;
 }
 
 export function AdminView({ onBack }: AdminViewProps) {
-  const [activeTab, setActiveTab] = useState<'news' | 'rooms'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'rooms' | 'professors'>('news');
   const [isLoading, setIsLoading] = useState(false);
 
   return (
@@ -52,12 +52,116 @@ export function AdminView({ onBack }: AdminViewProps) {
         >
           Salas
         </button>
+        <button
+          onClick={() => setActiveTab('professors')}
+          className={`px-4 py-3 font-bold border-b-2 transition-colors ${
+            activeTab === 'professors'
+              ? 'border-blue-700 text-blue-700'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Professores
+        </button>
       </div>
 
       {/* Content */}
       {activeTab === 'news' && <NewsManager />}
       {activeTab === 'rooms' && <RoomsManager />}
+      {activeTab === 'professors' && <ProfessorManager />}
     </motion.div>
+  );
+}
+
+function ProfessorManager() {
+  const [professors, setProfessors] = useState<User[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+
+  const loadProfessors = async () => {
+    setIsLoading(true);
+    try {
+      setProfessors(await adminApi.listProfessors());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar professores.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProfessors();
+  }, []);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setError('');
+    try {
+      await adminApi.createProfessor(formData);
+      setFormData({ name: '', email: '', password: '' });
+      setShowForm(false);
+      await loadProfessors();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Erro ao criar professor.');
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <button
+        onClick={() => setShowForm(!showForm)}
+        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-800 transition-colors"
+      >
+        <UserPlus size={20} />
+        Novo Professor
+      </button>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Nome completo</label>
+            <input type="text" value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} required minLength={2} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">E-mail</label>
+            <input type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Senha inicial</label>
+            <input type="password" value={formData.password} onChange={(event) => setFormData({ ...formData, password: event.target.value })} required minLength={6} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700" />
+          </div>
+          {error && <p className="text-sm font-bold text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={isLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 disabled:opacity-50">
+              <Check size={18} />
+              {isLoading ? 'Salvando...' : 'Criar conta'}
+            </button>
+            <button type="button" onClick={() => setShowForm(false)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-300 text-slate-700 rounded-lg font-bold hover:bg-slate-400">
+              <X size={18} />
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {isLoading && professors.length === 0 ? (
+        <div className="text-center py-8 text-slate-500">Carregando...</div>
+      ) : professors.length === 0 ? (
+        <div className="text-center py-8 text-slate-500">Nenhum professor cadastrado.</div>
+      ) : (
+        <div className="space-y-3">
+          {professors.map((professor) => (
+            <div key={professor.id} className="p-4 bg-white rounded-lg border border-slate-200">
+              <p className="font-bold text-slate-900">{professor.name}</p>
+              <p className="text-sm text-slate-500">{professor.email}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

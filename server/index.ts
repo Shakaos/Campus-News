@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 
 import { db } from './db.js';
 import { errorHandler, asyncHandler } from './middleware.js';
-import { LoginSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema } from './schemas.js';
+import { LoginSchema, RegisterSchema, CreateProfessorSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema } from './schemas.js';
 import {
   addQueueTicket,
   createAttendance,
@@ -13,23 +13,28 @@ import {
   createLabReservation,
   createNews,
   createRoom,
+  createUser,
   deleteClassNotice,
   deleteLabReservation,
   deleteNews,
   deleteRoom,
-  findUserByEmailOrRole,
   getAttendanceByClass,
   getClassNoticesByClass,
   getLabReservationsByProfessor,
   getNews,
   getQueueSectors,
   getRooms,
-  getUsers,
+  getUsersByRole,
+  findUserByEmail,
+  getSubjects,
+  getGrades,
   updateAttendance,
   updateNews,
   updateRoom,
+  createGrade,
+  updateGrade,
 } from './dbHelpers.js';
-import { generateId, generateNewsId, generateRoomId, sanitizeUser, verifyPassword } from './utils.js';
+import { generateId, generateNewsId, generateRoomId, generateUserId, hashPassword, sanitizeUser, verifyPassword } from './utils.js';
 
 dotenv.config();
 
@@ -97,9 +102,10 @@ app.post('/api/auth/login', asyncHandler(async (req: Request, res: Response) => 
   }
 
   const { username, password } = parsed.data;
-  const user = findUserByEmailOrRole(username) as any;
+  const user = findUserByEmail(username) as any;
 
-  if (!user || user.password !== password) {
+  const passwordMatches = user && (user.password === password || await verifyPassword(password, user.password));
+  if (!passwordMatches) {
     return res.status(401).json({ message: 'Usuário ou senha incorretos.' });
   }
 
@@ -117,6 +123,58 @@ app.post('/api/auth/login', asyncHandler(async (req: Request, res: Response) => 
   return res.json({ token, user: publicUser });
 }));
 
+app.post('/api/auth/register', asyncHandler(async (req: Request, res: Response) => {
+  const parsed = RegisterSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
+  }
+
+  const { name, email, password } = parsed.data;
+  if (findUserByEmail(email)) {
+    return res.status(409).json({ message: 'Já existe uma conta com este e-mail.' });
+  }
+
+  const user = createUser({
+    id: generateUserId(),
+    name,
+    role: 'aluno',
+    email,
+    password: await hashPassword(password),
+  });
+  const token = jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+
+  return res.status(201).json({
+    token,
+    user: { id: user.id, name: user.name, role: user.role, email: user.email },
+  });
+}));
+
+app.get('/api/admin/professors', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {
+  return res.json(getUsersByRole('professor'));
+});
+
+app.post('/api/admin/professors', authMiddleware, adminMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = CreateProfessorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
+  }
+
+  const { name, email, password } = parsed.data;
+  if (findUserByEmail(email)) {
+    return res.status(409).json({ message: 'Já existe uma conta com este e-mail.' });
+  }
+
+  const user = createUser({
+    id: generateUserId(),
+    name,
+    role: 'professor',
+    email,
+    password: await hashPassword(password),
+  });
+
+  return res.status(201).json({ id: user.id, name: user.name, role: user.role, email: user.email });
+}));
+
 app.get('/api/me', authMiddleware, (req: Request, res: Response) => {
   const user = (req as Request & { user?: any }).user;
 
@@ -131,6 +189,42 @@ app.get('/api/me', authMiddleware, (req: Request, res: Response) => {
 app.get('/api/news', (_req, res) => {
   res.json(getNews());
 });
+
+app.get('/api/subjects', (_req, res) => {
+  res.json(getSubjects());
+});
+
+app.get('/api/grades', authMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  const grades = user && user.role === 'aluno' ? getGrades(user.id) : getGrades();
+  return res.json(grades);
+});
+
+app.post('/api/grades', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = GradeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
+  }
+
+  const id = `grade-${Date.now()}`;
+  const grade = createGrade({ id, ...parsed.data });
+  return res.status(201).json(grade);
+}));
+
+app.put('/api/grades/:id', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const parsed = GradeSchema.partial().safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
+  }
+
+  const updated = updateGrade(id, parsed.data);
+  if (!updated) {
+    return res.status(404).json({ message: 'Nota não encontrada.' });
+  }
+
+  return res.json(updated);
+}));
 
 app.post('/api/news', authMiddleware, adminMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const parsed = NewsSchema.safeParse(req.body);

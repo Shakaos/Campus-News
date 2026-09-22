@@ -4,9 +4,31 @@ export const getUsers = () => db.prepare('SELECT * FROM users ORDER BY name').al
 export const getNews = () => db.prepare('SELECT * FROM news ORDER BY date DESC').all();
 export const getRooms = () => db.prepare('SELECT * FROM rooms ORDER BY building, name').all();
 export const getQueueSectors = () => db.prepare('SELECT * FROM queue_sectors ORDER BY name').all();
+export const getSubjects = () => db.prepare('SELECT * FROM academic_subjects ORDER BY name').all();
+export const getGrades = (studentId?: string) => {
+  if (studentId) {
+    return db.prepare('SELECT * FROM grades WHERE studentId = ? ORDER BY subjectName').all(studentId);
+  }
+
+  return db.prepare('SELECT * FROM grades ORDER BY subjectName, studentName').all();
+};
 
 export const findUserByEmailOrRole = (value: string) =>
   db.prepare('SELECT * FROM users WHERE email = ? OR role = ? LIMIT 1').get(value, value) as any;
+
+export const findUserByEmail = (email: string) =>
+  db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1').get(email) as any;
+
+export const createUser = (data: { id: string; name: string; role: string; email: string; password: string }) => {
+  db.prepare(`
+    INSERT INTO users (id, name, role, email, password)
+    VALUES (@id, @name, @role, @email, @password)
+  `).run(data);
+  return data;
+};
+
+export const getUsersByRole = (role: string) =>
+  db.prepare('SELECT id, name, role, email FROM users WHERE role = ? ORDER BY name').all(role);
 
 export const addQueueTicket = (ticket: {
   id: string;
@@ -57,6 +79,35 @@ export const updateNews = (id: string, data: Partial<{ title: string; category: 
 
 export const deleteNews = (id: string) => {
   db.prepare('DELETE FROM news WHERE id = ?').run(id);
+};
+
+export const createGrade = (data: {
+  id: string;
+  studentId: string;
+  studentName: string;
+  subjectId: string;
+  subjectName: string;
+  value: number;
+  period: string;
+  status: 'Aprovado' | 'Recuperação' | 'Reprovado';
+}) => {
+  db.prepare(`
+    INSERT INTO grades (id, studentId, studentName, subjectId, subjectName, value, period, status)
+    VALUES (@id, @studentId, @studentName, @subjectId, @subjectName, @value, @period, @status)
+  `).run(data);
+  return data;
+};
+
+export const updateGrade = (id: string, data: Partial<{ studentId: string; studentName: string; subjectId: string; subjectName: string; value: number; period: string; status: 'Aprovado' | 'Recuperação' | 'Reprovado' }>) => {
+  const updates = Object.entries(data)
+    .filter(([, v]) => v !== undefined)
+    .map(([k]) => `${k} = @${k}`)
+    .join(', ');
+
+  if (!updates) return null;
+
+  db.prepare(`UPDATE grades SET ${updates} WHERE id = @id`).run({ id, ...data });
+  return db.prepare('SELECT * FROM grades WHERE id = ?').get(id);
 };
 
 // Rooms CRUD

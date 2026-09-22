@@ -29,20 +29,35 @@ describe('Validation Schemas', () => {
         category: 'evento',
         summary: 'Uma semana dedicada a tecnologia',
         content: 'Conteúdo detalhado sobre a semana de tecnologia com informações completas',
+        date: '2026-09-10',
       };
       const result = NewsSchema.safeParse(data);
       expect(result.success).toBe(true);
     });
 
-    it('should reject short title', () => {
+    it('should accept empty imageUrl when editing a news item', () => {
       const data = {
-        title: 'abc',
+        title: 'Semana de Tecnologia',
         category: 'evento',
         summary: 'Uma semana dedicada a tecnologia',
         content: 'Conteúdo detalhado sobre a semana de tecnologia com informações completas',
+        date: '2026-09-10',
+        imageUrl: '',
       };
       const result = NewsSchema.safeParse(data);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept brief admin news text', () => {
+      const data = {
+        title: 'xcasd',
+        category: 'evento',
+        summary: 'xcasd',
+        content: 'dfsdf',
+        date: '2026-09-10',
+      };
+      const result = NewsSchema.safeParse(data);
+      expect(result.success).toBe(true);
     });
 
     it('should reject invalid category', () => {

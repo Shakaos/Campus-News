@@ -46,4 +46,24 @@ export interface User {
   email: string;
 }
 
-export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard' | 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports';
+export interface CourseSubject {
+  id: string;
+  name: string;
+  teacher: string;
+  schedule: string;
+  workload: number;
+  credits: number;
+}
+
+export interface GradeRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  subjectId: string;
+  subjectName: string;
+  value: number;
+  period: '1º Bimestre' | '2º Bimestre' | '3º Bimestre' | '4º Bimestre';
+  status: 'Aprovado' | 'Recuperação' | 'Reprovado';
+}
+
+export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard' | 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'student-performance';

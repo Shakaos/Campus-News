@@ -39,7 +39,39 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
+  register: async (name: string, email: string, password: string) =>
+    apiFetch<LoginResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    }),
   me: async () => apiFetch<User>('/me'),
+};
+
+export const adminApi = {
+  listProfessors: async () => apiFetch<User[]>('/admin/professors'),
+  createProfessor: async (data: { name: string; email: string; password: string }) =>
+    apiFetch<User>('/admin/professors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const subjectApi = {
+  list: async () => apiFetch<any[]>('/subjects'),
+};
+
+export const gradeApi = {
+  list: async () => apiFetch<any[]>('/grades'),
+  update: async (id: string, data: Record<string, any>) =>
+    apiFetch<any>(`/grades/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  create: async (data: Record<string, any>) =>
+    apiFetch<any>('/grades', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 export const newsApi = {
