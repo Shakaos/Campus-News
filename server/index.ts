@@ -1,11 +1,12 @@
 import cors from 'cors';
+import { randomBytes } from 'node:crypto';
 import dotenv from 'dotenv';
 import express, { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
 import { db } from './db.js';
 import { errorHandler, asyncHandler } from './middleware.js';
-import { LoginSchema, RegisterSchema, CreateProfessorSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema } from './schemas.js';
+import { LoginSchema, RegisterSchema, CreateProfessorSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema, CampusEventSchema, EventCheckInSchema, EventQrTokenSchema, SubjectAssessmentSchema, ClassAttendanceSchema, AssignmentSchema, AssignmentCompletionSchema } from './schemas.js';
 import {
   addQueueTicket,
   createAttendance,
@@ -20,6 +21,11 @@ import {
   deleteRoom,
   getAttendanceByClass,
   getClassNoticesByClass,
+  createAssignment,
+  getAssignmentsByProfessor,
+  getAssignmentsByStudent,
+  getAssignmentById,
+  setAssignmentCompleted,
   getLabReservationsByProfessor,
   getNews,
   getQueueSectors,
@@ -33,6 +39,21 @@ import {
   updateRoom,
   createGrade,
   updateGrade,
+  createCampusEvent,
+  getCampusEventsByProfessor,
+  getCampusEventById,
+  getEventByQrToken,
+  getEventAttendanceRecord,
+  createEventQrToken,
+  markEventQrTokenUsed,
+  recordEventCheckIn,
+  getEventAttendanceForStudent,
+  getSubjectAssessments,
+  saveSubjectAssessment,
+  getClassAttendance,
+  getStudentAttendance,
+  saveClassAttendanceRecord,
+  findUserById,
 } from './dbHelpers.js';
 import { generateId, generateNewsId, generateRoomId, generateUserId, hashPassword, sanitizeUser, verifyPassword } from './utils.js';
 
@@ -199,6 +220,68 @@ app.get('/api/grades', authMiddleware, (req: Request, res: Response) => {
   const grades = user && user.role === 'aluno' ? getGrades(user.id) : getGrades();
   return res.json(grades);
 });
+
+app.get('/api/attendance/students', authMiddleware, professorMiddleware, (_req: Request, res: Response) =>
+  res.json(getUsersByRole('aluno'))
+);
+
+app.get('/api/attendance/student-history', authMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role !== 'aluno') return res.status(403).json({ message: 'Acesso restrito a alunos.' });
+  return res.json(getStudentAttendance(user.id));
+});
+
+app.get('/api/attendance/class/:subjectId', authMiddleware, professorMiddleware, (req: Request, res: Response) =>
+  res.json(getClassAttendance(req.params.subjectId))
+);
+
+app.post('/api/attendance/session', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = ClassAttendanceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Dados da chamada inválidos.', errors: parsed.error.errors });
+
+  const user = (req as Request & { user?: any }).user;
+  const subject = getSubjects().find((item: any) => item.id === parsed.data.subjectId);
+  if (!subject) return res.status(404).json({ message: 'Matéria não encontrada.' });
+
+  for (const record of parsed.data.records) {
+    const student = findUserById(record.studentId);
+    if (!student || student.role !== 'aluno') continue;
+    saveClassAttendanceRecord({
+      id: generateId(), studentId: student.id, studentName: student.name,
+      subjectId: subject.id, date: parsed.data.date, status: record.status, professorId: user.id,
+    });
+  }
+  return res.json(getClassAttendance(subject.id));
+}));
+
+app.get('/api/subject-assessments', authMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  return res.json(user.role === 'aluno' ? getSubjectAssessments(user.id) : getSubjectAssessments());
+});
+
+app.put('/api/subject-assessments', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = SubjectAssessmentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Dados da avaliação inválidos.', errors: parsed.error.errors });
+
+  const student = findUserById(parsed.data.studentId);
+  const subject = getSubjects().find((item: any) => item.id === parsed.data.subjectId);
+  if (!student || student.role !== 'aluno') return res.status(404).json({ message: 'Aluno não encontrado.' });
+  if (!subject) return res.status(404).json({ message: 'Matéria não encontrada.' });
+
+  const user = (req as Request & { user?: any }).user;
+  const assessmentData = parsed.data as {
+    studentId: string;
+    subjectId: string;
+    assessmentType: 'N1' | 'N2' | 'Trabalho' | 'Exame';
+    period: '1º Bimestre' | '2º Bimestre' | '3º Bimestre' | '4º Bimestre';
+    value: number;
+  };
+  const assessment = saveSubjectAssessment({
+    id: generateId(), ...assessmentData, studentName: student.name, subjectName: subject.name,
+    professorId: user.id, updatedAt: new Date().toISOString(),
+  });
+  return res.json(assessment);
+}));
 
 app.post('/api/grades', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const parsed = GradeSchema.safeParse(req.body);
@@ -385,6 +468,112 @@ app.put('/api/attendance/:id', authMiddleware, professorMiddleware, asyncHandler
   return res.json(updated);
 }));
 
+app.get('/api/events', authMiddleware, professorMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  return res.json(getCampusEventsByProfessor(user.id));
+});
+
+app.post('/api/events/:eventId/qr', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = EventQrTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Aluno ou tipo de QR inválido.' });
+
+  const user = (req as Request & { user?: any }).user;
+  const event = getCampusEventById(req.params.eventId);
+  if (!event || event.professorId !== user.id) return res.status(404).json({ message: 'Evento não encontrado.' });
+  const student = findUserById(parsed.data.studentId);
+  if (!student || student.role !== 'aluno') return res.status(404).json({ message: 'Aluno não encontrado.' });
+
+  const now = new Date();
+  if (now < new Date(event.startsAt) || now > new Date(event.endsAt)) {
+    return res.status(400).json({ message: 'O QR só pode ser gerado durante o horário do evento.' });
+  }
+
+  const existing = getEventAttendanceRecord(event.id, student.id);
+  if (parsed.data.phase === 'entry' && existing?.checkedInAt) return res.status(409).json({ message: 'A entrada deste aluno já foi registrada.' });
+  if (parsed.data.phase === 'exit' && !existing?.checkedInAt) return res.status(409).json({ message: 'Registre a entrada antes de gerar o QR de saída.' });
+  if (parsed.data.phase === 'exit' && existing?.checkedOutAt) return res.status(409).json({ message: 'A saída deste aluno já foi registrada.' });
+
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = new Date(now.getTime() + 2 * 60 * 1000).toISOString();
+  createEventQrToken({ token, eventId: event.id, studentId: student.id, phase: parsed.data.phase, expiresAt, createdAt: now.toISOString() });
+  return res.status(201).json({ token, phase: parsed.data.phase, studentName: student.name, expiresAt });
+}));
+
+app.post('/api/events', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = CampusEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Dados do evento inválidos.', errors: parsed.error.errors });
+  }
+
+  const user = (req as Request & { user?: any }).user;
+  const eventData = parsed.data as { title: string; description: string; location: string; startsAt: string; endsAt: string };
+  const event = createCampusEvent({
+    id: generateId(),
+    professorId: user.id,
+    ...eventData,
+    entryToken: randomBytes(32).toString('hex'),
+    exitToken: randomBytes(32).toString('hex'),
+    createdAt: new Date().toISOString(),
+  });
+  const { entryToken: _entryToken, exitToken: _exitToken, ...publicEvent } = event;
+  return res.status(201).json(publicEvent);
+}));
+
+app.post('/api/events/confirm', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role !== 'aluno') {
+    return res.status(403).json({ message: 'A confirmação de presença é exclusiva para alunos.' });
+  }
+
+  const parsed = EventCheckInSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'QR code inválido.' });
+  }
+
+  const event = getEventByQrToken(parsed.data.token);
+  if (!event) return res.status(404).json({ message: 'QR individual não encontrado ou expirado.' });
+  if (event.tokenStudentId !== user.id) return res.status(403).json({ message: 'Este QR foi gerado para outro aluno.' });
+  if (event.usedAt) return res.status(409).json({ message: 'Este QR já foi utilizado.' });
+
+  const now = new Date();
+  if (now > new Date(event.expiresAt)) return res.status(410).json({ message: 'Este QR expirou. Peça ao professor para gerar outro.' });
+  if (now < new Date(event.startsAt) || now > new Date(event.endsAt)) {
+    return res.status(400).json({ message: 'Este evento não está dentro do período de confirmação.' });
+  }
+
+  const existing = getEventAttendanceRecord(event.id, user.id);
+  if (event.phase === 'entry' && existing?.checkedInAt) return res.status(409).json({ message: 'Sua entrada já foi confirmada.' });
+  if (event.phase === 'exit' && !existing?.checkedInAt) return res.status(409).json({ message: 'A entrada precisa ser confirmada primeiro.' });
+  if (event.phase === 'exit' && existing?.checkedOutAt) return res.status(409).json({ message: 'Sua saída já foi confirmada.' });
+
+  if (!markEventQrTokenUsed(parsed.data.token, now.toISOString())) {
+    return res.status(409).json({ message: 'Este QR já foi utilizado. Peça ao professor para gerar outro.' });
+  }
+
+  const attendance = recordEventCheckIn({
+    id: generateId(),
+    eventId: event.id,
+    studentId: user.id,
+    studentName: user.name,
+    phase: event.phase,
+    timestamp: now.toISOString(),
+  });
+
+  if (!attendance) {
+    return res.status(409).json({ message: 'Registre a entrada antes de confirmar a saída.' });
+  }
+
+  return res.json({ event: { id: event.id, title: event.title, location: event.location }, attendance });
+}));
+
+app.get('/api/events/my-attendance', authMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role !== 'aluno') {
+    return res.status(403).json({ message: 'Acesso restrito a alunos.' });
+  }
+  return res.json(getEventAttendanceForStudent(user.id));
+});
+
 // Lab Reservations
 app.post('/api/lab-reservations', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const parsed = LabReservationSchema.safeParse(req.body);
@@ -455,6 +644,41 @@ app.delete('/api/class-notices/:id', authMiddleware, professorMiddleware, (req: 
   deleteClassNotice(id);
   return res.json({ message: 'Aviso deletado com sucesso.' });
 });
+
+app.get('/api/assignments', authMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role === 'aluno') return res.json(getAssignmentsByStudent(user.id));
+  if (user.role === 'professor') return res.json(getAssignmentsByProfessor(user.id));
+  return res.status(403).json({ message: 'Acesso restrito a alunos e professores.' });
+});
+
+app.post('/api/assignments', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = AssignmentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Dados do trabalho inválidos.', errors: parsed.error.errors });
+
+  const subject = getSubjects().find((item: any) => item.id === parsed.data.subjectId);
+  if (!subject) return res.status(404).json({ message: 'Matéria não encontrada.' });
+  const user = (req as Request & { user?: any }).user;
+  const assignment = createAssignment({
+    id: generateId(), ...parsed.data, subjectName: subject.name,
+    professorId: user.id, createdAt: new Date().toISOString(),
+  });
+  return res.status(201).json(assignment);
+}));
+
+app.put('/api/assignments/:id/completion', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role !== 'aluno') return res.status(403).json({ message: 'Somente alunos podem atualizar seus trabalhos.' });
+  const parsed = AssignmentCompletionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Estado do trabalho inválido.' });
+  if (!getAssignmentById(req.params.id)) return res.status(404).json({ message: 'Trabalho não encontrado.' });
+
+  const updated = setAssignmentCompleted({
+    id: generateId(), assignmentId: req.params.id, studentId: user.id,
+    completedAt: parsed.data.completed ? new Date().toISOString() : null,
+  });
+  return res.json(updated);
+}));
 
 // 404 handler
 app.use((req, res) => {

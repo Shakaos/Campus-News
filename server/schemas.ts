@@ -49,6 +49,54 @@ export const AttendanceSchema = z.object({
   date: z.string().datetime().optional(),
 });
 
+export const SubjectAssessmentSchema = z.object({
+  studentId: z.string().min(1),
+  subjectId: z.string().min(1),
+  assessmentType: z.enum(['N1', 'N2', 'Trabalho', 'Exame']),
+  period: z.enum(['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre']),
+  value: z.number().min(0).max(10),
+});
+
+export const ClassAttendanceSchema = z.object({
+  subjectId: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  records: z.array(z.object({
+    studentId: z.string().min(1),
+    status: z.enum(['presente', 'ausente', 'atraso']),
+  })).min(1),
+});
+
+export const AssignmentSchema = z.object({
+  subjectId: z.string().min(1),
+  title: z.string().trim().min(3).max(140),
+  description: z.string().trim().min(3).max(2000),
+  dueAt: z.string().datetime(),
+});
+
+export const AssignmentCompletionSchema = z.object({
+  completed: z.boolean(),
+});
+
+export const CampusEventSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  description: z.string().trim().min(5).max(1000),
+  location: z.string().trim().min(2).max(120),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+}).refine((event) => new Date(event.endsAt) > new Date(event.startsAt), {
+  message: 'O término deve ser posterior ao início.',
+  path: ['endsAt'],
+});
+
+export const EventCheckInSchema = z.object({
+  token: z.string().min(32).max(128),
+});
+
+export const EventQrTokenSchema = z.object({
+  studentId: z.string().min(1),
+  phase: z.enum(['entry', 'exit']),
+});
+
 export const LabReservationSchema = z.object({
   labName: z.string().min(2),
   date: z.string(),
@@ -81,6 +129,7 @@ export type CreateProfessorInput = z.infer<typeof CreateProfessorSchema>;
 export type NewsInput = z.infer<typeof NewsSchema>;
 export type RoomInput = z.infer<typeof RoomSchema>;
 export type AttendanceInput = z.infer<typeof AttendanceSchema>;
+export type CampusEventInput = z.infer<typeof CampusEventSchema>;
 export type LabReservationInput = z.infer<typeof LabReservationSchema>;
 export type ClassNoticeInput = z.infer<typeof ClassNoticeSchema>;
 export type GradeInput = z.infer<typeof GradeSchema>;

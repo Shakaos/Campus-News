@@ -1,12 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Users, Calendar, Newspaper, TrendingUp, Plus, Trash2, Check, Clock } from 'lucide-react';
-
-interface AttendanceRecord {
-  id: string;
-  studentName: string;
-  status: 'presente' | 'ausente' | 'atraso';
-}
+import { ArrowLeft, Users, Calendar, Newspaper, TrendingUp, Plus, Trash2, Check, Clock, X } from 'lucide-react';
+import { academicApi } from './api';
+import type { AttendanceStatus, ClassAttendanceRecord, CourseSubject, User } from './types';
 
 interface LabReservation {
   id: string;
@@ -32,29 +28,53 @@ interface Report {
   data: any;
 }
 
-export function AttendanceList({ onBack }: { onBack: () => void }) {
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([
-    { id: '1', studentName: 'João Silva', status: 'presente' },
-    { id: '2', studentName: 'Maria Santos', status: 'presente' },
-    { id: '3', studentName: 'Carlos Oliveira', status: 'atraso' },
-    { id: '4', studentName: 'Ana Costa', status: 'ausente' },
-    { id: '5', studentName: 'Pedro Gomes', status: 'presente' },
-  ]);
+export function AttendanceList({ onBack, subjects, isWeb = false }: { onBack: () => void; subjects: CourseSubject[]; isWeb?: boolean }) {
+  const [students, setStudents] = useState<User[]>([]);
+  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  useEffect(() => {
+    void academicApi.listStudents()
+      .then(setStudents)
+      .catch(loadError => setMessage(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os alunos.'))
+      .finally(() => setIsLoading(false));
+  }, []);
 
-  const toggleAttendance = (id: string, newStatus: AttendanceRecord['status']) => {
-    setAttendance(prev => 
-      prev.map(record => 
-        record.id === id ? { ...record, status: newStatus } : record
-      )
-    );
+  useEffect(() => {
+    if (!subjectId || !date) return;
+    setAttendance({});
+    void academicApi.listClassAttendance(subjectId)
+      .then(records => {
+        const todaysRecords = records.filter(record => record.date === date);
+        setAttendance(Object.fromEntries(todaysRecords.map(record => [record.studentId, record.status])));
+      })
+      .catch(loadError => setMessage(loadError instanceof Error ? loadError.message : 'Não foi possível carregar a chamada.'));
+  }, [subjectId, date]);
+
+  const toggleAttendance = (studentId: string, status: AttendanceStatus) => {
+    setAttendance(prev => ({ ...prev, [studentId]: status }));
   };
 
-  const saveAttendance = () => {
-    // Here you would save to backend
-    setEditingId(null);
-    alert('Presença registrada com sucesso!');
+  const saveAttendance = async () => {
+    if (!subjectId || !date || students.length === 0) return;
+    setIsSaving(true);
+    setMessage('');
+    try {
+      await academicApi.saveClassAttendance({
+        subjectId,
+        date,
+        records: students.map(student => ({ studentId: student.id, status: attendance[student.id] ?? 'presente' })),
+      });
+      setMessage('Chamada salva. As faltas já aparecem no boletim do aluno.');
+    } catch (saveError) {
+      setMessage(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a chamada.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -62,84 +82,66 @@ export function AttendanceList({ onBack }: { onBack: () => void }) {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="p-6 space-y-6"
+      className={isWeb ? 'space-y-5 px-1 py-2 md:px-2' : 'space-y-6 p-6'}
     >
       <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors">
           <ArrowLeft size={20} />
         </button>
-        <h2 className="text-2xl font-bold text-slate-900">Lista de Presença - Algoritmos II</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Lista de Presença</h2>
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-900">
-        <p className="font-semibold">Aula: Algoritmos II - Sala B-102</p>
-        <p className="text-blue-700">Data: {new Date().toLocaleDateString('pt-BR')}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm font-semibold text-slate-700">Matéria
+          <select value={subjectId} onChange={event => setSubjectId(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+            {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+          </select>
+        </label>
+        <label className="text-sm font-semibold text-slate-700">Data da aula
+          <input type="date" value={date} onChange={event => setDate(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2" />
+        </label>
       </div>
 
-      <div className="space-y-3">
-        {attendance.map(record => (
-          <div key={record.id} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between">
-            <div className="flex-1">
-              <p className="font-semibold text-slate-900">{record.studentName}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toggleAttendance(record.id, 'presente')}
-                className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
-                  record.status === 'presente'
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-slate-200 text-slate-600 hover:bg-emerald-100'
-                }`}
-              >
-                <Check size={16} className="inline mr-1" />
-                Presente
-              </button>
-              <button
-                onClick={() => toggleAttendance(record.id, 'atraso')}
-                className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
-                  record.status === 'atraso'
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-slate-200 text-slate-600 hover:bg-yellow-100'
-                }`}
-              >
-                <Clock size={16} className="inline mr-1" />
-                Atraso
-              </button>
-              <button
-                onClick={() => toggleAttendance(record.id, 'ausente')}
-                className={`px-3 py-1 rounded-full text-sm font-semibold transition-all ${
-                  record.status === 'ausente'
-                    ? 'bg-red-500 text-white'
-                    : 'bg-slate-200 text-slate-600 hover:bg-red-100'
-                }`}
-              >
-                Ausente
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      {message && <p role="status" className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">{message}</p>}
 
-      <div className="bg-slate-100 p-4 rounded-xl space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="font-semibold">Presentes:</span>
-          <span className="text-emerald-600 font-bold">{attendance.filter(a => a.status === 'presente').length}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="font-semibold">Atrasos:</span>
-          <span className="text-yellow-600 font-bold">{attendance.filter(a => a.status === 'atraso').length}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="font-semibold">Ausentes:</span>
-          <span className="text-red-600 font-bold">{attendance.filter(a => a.status === 'ausente').length}</span>
-        </div>
+      {isLoading ? <p className="text-sm text-slate-500">Carregando alunos...</p> : students.length === 0 ? <p className="text-sm text-slate-500">Nenhum aluno cadastrado.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+          <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+            <tr><th className="px-4 py-3 font-bold">Aluno</th><th className="px-3 py-3 text-center font-bold">Presente</th><th className="px-3 py-3 text-center font-bold">Falta</th><th className="px-3 py-3 text-center font-bold">Atrasado</th></tr>
+          </thead>
+          <tbody>
+            {students.map(student => {
+              const status = attendance[student.id] ?? 'presente';
+              const options: { status: AttendanceStatus; label: string; icon: React.ReactNode; color: string }[] = [
+                { status: 'presente', label: 'Marcar presente', icon: <Check size={16} />, color: 'border-emerald-600 bg-emerald-600 text-white' },
+                { status: 'ausente', label: 'Marcar falta', icon: <X size={16} />, color: 'border-red-600 bg-red-600 text-white' },
+                { status: 'atraso', label: 'Marcar atrasado', icon: <Clock size={16} />, color: 'border-amber-500 bg-amber-500 text-white' },
+              ];
+              return <tr key={student.id} className="border-t border-slate-200">
+                <th scope="row" className="px-4 py-3 font-semibold text-slate-900">{student.name}</th>
+                {options.map(option => <td key={option.status} className="px-3 py-2 text-center">
+                  <button type="button" aria-label={`${option.label}: ${student.name}`} aria-pressed={status === option.status} onClick={() => toggleAttendance(student.id, option.status)} className={`mx-auto grid size-9 place-items-center rounded-md border transition-colors ${status === option.status ? option.color : 'border-slate-300 bg-white text-slate-400 hover:bg-slate-100'}`}>
+                    {option.icon}
+                  </button>
+                </td>)}
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>}
+
+      <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-100 p-3 text-sm">
+        <div className="flex justify-between gap-2"><span className="font-semibold">Presentes:</span><span className="font-bold text-emerald-700">{students.filter(student => (attendance[student.id] ?? 'presente') === 'presente').length}</span></div>
+        <div className="flex justify-between gap-2"><span className="font-semibold">Faltas:</span><span className="font-bold text-red-700">{students.filter(student => attendance[student.id] === 'ausente').length}</span></div>
+        <div className="flex justify-between gap-2"><span className="font-semibold">Atrasados:</span><span className="font-bold text-amber-700">{students.filter(student => attendance[student.id] === 'atraso').length}</span></div>
       </div>
 
       <button
-        onClick={saveAttendance}
-        className="w-full bg-blue-700 text-white font-bold py-3 rounded-xl hover:bg-blue-800 transition-all"
+        onClick={() => void saveAttendance()}
+        disabled={isSaving || isLoading || students.length === 0}
+        className="w-full bg-blue-700 text-white font-bold py-3 rounded-lg hover:bg-blue-800 transition-all disabled:opacity-60"
       >
-        Salvar Presença
+        {isSaving ? 'Salvando chamada...' : 'Salvar chamada'}
       </button>
     </motion.div>
   );

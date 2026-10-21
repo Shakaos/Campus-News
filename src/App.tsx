@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
 import { 
   Newspaper, 
@@ -26,12 +27,19 @@ import {
   GraduationCap,
   Key,
   Sun,
-  Moon
+  Moon,
+  QrCode,
+  BellRing,
+  BookOpen,
+  ClipboardList
 } from 'lucide-react';
-import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, CourseSubject, GradeRecord } from './types';
-import { authApi, newsApi, queueApi, roomApi } from './api';
+import { AppView, NewsItem, Room, QueueSector, QueueTicket, User, CourseSubject, GradeRecord, SubjectAssessmentRecord, ClassAttendanceRecord, AssessmentType, AssignmentRecord } from './types';
+import { academicApi, assignmentApi, authApi, newsApi, queueApi, roomApi, subjectApi } from './api';
 import { AdminView } from './AdminView';
 import { AttendanceList, LabReservation, ClassNotices, Reports } from './ProfessorTools';
+import { EventCheckin, ProfessorEvents, StudentEventScanner } from './EventTools';
+import { ProfessorAssignments, StudentAssignments, StudentSchedule } from './AssignmentTools';
+import { WebLayout } from './WebLayout';
 import { ErrorBoundary, ErrorAlert } from './ErrorBoundary';
 import { useError } from './hooks';
 
@@ -51,10 +59,12 @@ graph TD
 */
 
 export default function App() {
+  const isNativeApp = Capacitor.isNativePlatform();
   const [view, setView] = useState<AppView>('login');
   const [user, setUser] = useState<User | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [activeTicket, setActiveTicket] = useState<QueueTicket | null>(null);
+  const [scannedEventToken, setScannedEventToken] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -91,6 +101,9 @@ export default function App() {
       { id: 'g3', studentId: 'me', studentName: 'Aluno', subjectId: 'eng', subjectName: 'Engenharia de Software', value: 6.3, period: '1º Bimestre', status: 'Recuperação' }
     ];
   });
+  const [assessments, setAssessments] = useState<SubjectAssessmentRecord[]>([]);
+  const [studentAttendance, setStudentAttendance] = useState<ClassAttendanceRecord[]>([]);
+  const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('campus_theme');
     return savedTheme === 'dark' ? 'dark' : 'light';
@@ -111,6 +124,30 @@ export default function App() {
   }, [grades]);
 
   useEffect(() => {
+    if (user?.role !== 'aluno') {
+      setAssessments([]);
+      setStudentAttendance([]);
+      return;
+    }
+    void Promise.all([academicApi.listAssessments(), academicApi.listMyAttendance()])
+      .then(([assessmentRecords, attendanceRecords]) => {
+        setAssessments(assessmentRecords);
+        setStudentAttendance(attendanceRecords);
+      })
+      .catch(loadError => showError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar o boletim.'));
+  }, [user, showError]);
+
+  useEffect(() => {
+    if (user?.role !== 'aluno') {
+      setAssignments([]);
+      return;
+    }
+    void assignmentApi.list()
+      .then(setAssignments)
+      .catch(loadError => showError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os trabalhos.'));
+  }, [user, showError]);
+
+  useEffect(() => {
     const boot = async () => {
       const savedToken = localStorage.getItem('campus_token');
       const savedUser = localStorage.getItem('campus_user');
@@ -119,7 +156,7 @@ export default function App() {
         try {
           const userData = JSON.parse(savedUser) as User;
           setUser(userData);
-          setView('home');
+          setView(new URLSearchParams(window.location.search).has('eventToken') && userData.role === 'aluno' ? 'event-checkin' : 'home');
         } catch {
           localStorage.removeItem('campus_token');
           localStorage.removeItem('campus_user');
@@ -127,15 +164,17 @@ export default function App() {
       }
 
       try {
-        const [newsData, roomsData, sectorsData] = await Promise.all([
+        const [newsData, roomsData, sectorsData, subjectData] = await Promise.all([
           newsApi.list(),
           roomApi.list(),
           queueApi.list(),
+          subjectApi.list(),
         ]);
 
         setNews(newsData);
         setRooms(roomsData);
         setSectors(sectorsData);
+        if (subjectData.length) setSubjects(subjectData);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Erro ao carregar dados';
         showError(message);
@@ -152,7 +191,7 @@ export default function App() {
       setUser(nextUser);
       localStorage.setItem('campus_token', response.token);
       localStorage.setItem('campus_user', JSON.stringify(nextUser));
-      setView('home');
+      setView(new URLSearchParams(window.location.search).has('eventToken') && nextUser.role === 'aluno' ? 'event-checkin' : 'home');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro ao fazer login';
       showError(message);
@@ -172,13 +211,16 @@ export default function App() {
   const navigate = (newView: AppView, news?: NewsItem) => {
     // Role protection
     if (newView === 'admin' && user?.role !== 'admin') return;
-    if (newView === 'professor-dashboard' && user?.role !== 'professor') return;
+    if (['professor-dashboard', 'professor-events', 'professor-assignments', 'professor-attendance', 'professor-lab', 'professor-notices', 'professor-reports', 'professor-grades'].includes(newView) && user?.role !== 'professor') return;
+    if (['student-performance', 'student-events', 'student-schedule', 'student-assignments', 'event-checkin'].includes(newView) && user?.role !== 'aluno') return;
 
     setView(newView);
     if (news) setSelectedNews(news);
     setIsMenuOpen(false);
     window.scrollTo(0, 0);
   };
+
+  const isWideWorkspace = ['professor-dashboard', 'professor-attendance', 'professor-lab', 'professor-notices', 'professor-reports', 'professor-grades', 'professor-events', 'professor-assignments', 'student-events', 'student-schedule', 'student-assignments', 'event-checkin'].includes(view);
 
   if (view === 'login') {
     return (
@@ -188,11 +230,36 @@ export default function App() {
           setUser(response.user);
           localStorage.setItem('campus_token', response.token);
           localStorage.setItem('campus_user', JSON.stringify(response.user));
-          setView('home');
+          setView(new URLSearchParams(window.location.search).has('eventToken') && response.user.role === 'aluno' ? 'event-checkin' : 'home');
         }} />
       </ErrorBoundary>
     );
   }
+
+  const appScreens = (
+    <AnimatePresence mode="wait">
+      {view === 'home' && <HomeView user={user!} onNavigate={navigate} assignments={assignments} isWeb={!isNativeApp} />}
+      {view === 'campus-news' && <JornalView onNavigate={navigate} news={news} isWeb={!isNativeApp} />}
+      {view === 'noticia' && selectedNews && <NewsDetailView news={selectedNews} onBack={() => navigate('campus-news')} />}
+      {view === 'salas' && <SalasView rooms={rooms} onBack={() => navigate('home')} isWeb={!isNativeApp} />}
+      {view === 'filas' && <FilasView sectors={sectors} onBack={() => navigate('home')} onJoin={async (ticket) => { setActiveTicket(ticket); navigate('acompanhamento'); }} isWeb={!isNativeApp} />}
+      {view === 'acompanhamento' && activeTicket && <AcompanhamentoView sectors={sectors} ticket={activeTicket} onExit={() => { setActiveTicket(null); navigate('home'); }} />}
+      {view === 'admin' && <AdminView onBack={() => navigate('home')} isWeb={!isNativeApp} />}
+      {view === 'professor-dashboard' && <ProfessorDashboard onBack={() => navigate('home')} onSelectTool={(tool) => navigate(tool as AppView)} isWeb={!isNativeApp} />}
+      {view === 'professor-events' && <ProfessorEvents onBack={() => navigate('professor-dashboard')} />}
+      {view === 'professor-assignments' && <ProfessorAssignments onBack={() => navigate('professor-dashboard')} subjects={subjects} isWeb={!isNativeApp} />}
+      {view === 'student-schedule' && <StudentSchedule onBack={() => navigate('home')} subjects={subjects} isWeb={!isNativeApp} />}
+      {view === 'student-assignments' && <StudentAssignments onBack={() => navigate('home')} assignments={assignments} onToggleCompletion={async (id, completed) => { const updated = await assignmentApi.setCompleted(id, completed); setAssignments(previous => previous.map(item => item.id === id ? updated : item)); }} isWeb={!isNativeApp} />}
+      {view === 'student-events' && <StudentEventScanner onBack={() => navigate('home')} onScan={token => { setScannedEventToken(token); navigate('event-checkin'); }} />}
+      {view === 'event-checkin' && <EventCheckin userName={user?.name ?? 'Aluno'} tokenOverride={scannedEventToken} onBack={() => { setScannedEventToken(null); navigate('student-events'); }} />}
+      {view === 'professor-attendance' && <AttendanceList onBack={() => navigate('professor-dashboard')} subjects={subjects} isWeb={!isNativeApp} />}
+      {view === 'professor-lab' && <LabReservation onBack={() => navigate('professor-dashboard')} />}
+      {view === 'professor-notices' && <ClassNotices onBack={() => navigate('professor-dashboard')} />}
+      {view === 'professor-reports' && <Reports onBack={() => navigate('professor-dashboard')} />}
+      {view === 'professor-grades' && <ProfessorGradesView onBack={() => navigate('professor-dashboard')} subjects={subjects} />}
+      {view === 'student-performance' && <StudentPerformanceView onBack={() => navigate('home')} userName={user?.name ?? 'Aluno'} assessments={assessments} attendance={studentAttendance} subjects={subjects} isWeb={!isNativeApp} />}
+    </AnimatePresence>
+  );
 
   return (
     <ErrorBoundary>
@@ -205,6 +272,7 @@ export default function App() {
           </div>
         )}
 
+        {isNativeApp && <>
         {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm dark:bg-slate-900/80 dark:border-slate-700 dark:text-slate-100">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('home')}>
@@ -274,6 +342,18 @@ export default function App() {
               {user?.role === 'professor' && (
                 <MenuLink icon={<GraduationCap size={20} />} label="Painel do Professor" onClick={() => navigate('professor-dashboard')} />
               )}
+              {user?.role === 'professor' && (
+                <MenuLink icon={<ClipboardList size={20} />} label="Trabalhos da turma" onClick={() => navigate('professor-assignments')} />
+              )}
+              {user?.role === 'aluno' && (
+                <MenuLink icon={<QrCode size={20} />} label="Escanear palestra" onClick={() => navigate('student-events')} />
+              )}
+              {user?.role === 'aluno' && (
+                <>
+                  <MenuLink icon={<BookOpen size={20} />} label="Minhas disciplinas" onClick={() => navigate('student-schedule')} />
+                  <MenuLink icon={<ClipboardList size={20} />} label="Trabalhos" onClick={() => navigate('student-assignments')} />
+                </>
+              )}
             </nav>
 
             <button 
@@ -286,29 +366,19 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+        </>}
 
       {/* Main Content */}
-      <main className="max-w-md mx-auto pb-20 dark:bg-slate-950">
-        <AnimatePresence mode="wait">
-          {view === 'home' && <HomeView user={user!} onNavigate={navigate} />}
-          {view === 'campus-news' && <JornalView onNavigate={navigate} news={news} />}
-          {view === 'noticia' && selectedNews && <NewsDetailView news={selectedNews} onBack={() => navigate('campus-news')} />}
-          {view === 'salas' && <SalasView rooms={rooms} onBack={() => navigate('home')} />}
-          {view === 'filas' && <FilasView sectors={sectors} onBack={() => navigate('home')} onJoin={async (ticket) => { setActiveTicket(ticket); navigate('acompanhamento'); }} />}
-          {view === 'acompanhamento' && activeTicket && <AcompanhamentoView sectors={sectors} ticket={activeTicket} onExit={() => { setActiveTicket(null); navigate('home'); }} />}
-          {view === 'admin' && <AdminView onBack={() => navigate('home')} />}
-          {view === 'professor-dashboard' && <ProfessorDashboard onBack={() => navigate('home')} onSelectTool={(tool) => navigate(tool as AppView)} />}
-          {view === 'professor-attendance' && <AttendanceList onBack={() => navigate('professor-dashboard')} />}
-          {view === 'professor-lab' && <LabReservation onBack={() => navigate('professor-dashboard')} />}
-          {view === 'professor-notices' && <ClassNotices onBack={() => navigate('professor-dashboard')} />}
-          {view === 'professor-reports' && <Reports onBack={() => navigate('professor-dashboard')} />}
-          {view === 'professor-grades' && <ProfessorGradesView onBack={() => navigate('professor-dashboard')} grades={grades} setGrades={setGrades} subjects={subjects} />}
-          {view === 'student-performance' && <StudentPerformanceView onBack={() => navigate('home')} userName={user?.name ?? 'Aluno'} grades={grades} subjects={subjects} />}
-        </AnimatePresence>
-      </main>
+      {isNativeApp ? (
+        <main className="mx-auto max-w-md px-4 pb-20 dark:bg-slate-950">{appScreens}</main>
+      ) : (
+        <WebLayout user={user!} view={view} theme={theme} onNavigate={navigate} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} onLogout={logout}>
+          {appScreens}
+        </WebLayout>
+      )}
 
       {/* Quick Access Bar (Optional) */}
-      {view !== 'home' && (
+      {isNativeApp && view !== 'home' && (
         <motion.div 
           initial={{ y: 100 }}
           animate={{ y: 0 }}
@@ -342,19 +412,31 @@ function MenuLink({ icon, label, onClick }: { icon: React.ReactNode, label: stri
   );
 }
 
-function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n?: NewsItem) => void }) {
+function getAssignmentDueNotice(dueAt: string) {
+  const dueDate = new Date(dueAt);
+  const today = new Date();
+  const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime();
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const dayDifference = Math.round((dueDay - todayDay) / 86400000);
+  if (dayDifference === 0) return 'Vence hoje';
+  if (dayDifference === 1) return 'Vence amanhã';
+  return null;
+}
+
+function HomeView({ user, onNavigate, assignments = [], isWeb = false }: { user: User, onNavigate: (v: AppView, n?: NewsItem) => void, assignments?: AssignmentRecord[], isWeb?: boolean }) {
   const isProfessor = user.role === 'professor';
   const isAdmin = user.role === 'admin';
+  const dueSoon = assignments.filter(assignment => !assignment.completedAt && getAssignmentDueNotice(assignment.dueAt));
 
   return (
     <motion.div 
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
-      className="p-6 space-y-12"
+      className={isWeb ? 'web-home grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start' : 'space-y-12 p-6'}
     >
       {/* Header Greeting */}
-      <div className="space-y-4">
+      <div className={`space-y-3 ${isWeb ? 'web-home-greeting' : ''}`}>
         <div className="flex items-center justify-between">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-700 text-white rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-blue-700/30">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
@@ -365,7 +447,7 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
           </div>
         </div>
         <div className="space-y-1">
-          <h2 className="text-5xl font-black tracking-tighter leading-[0.9] text-slate-900">
+          <h2 className={`${isWeb ? 'text-4xl' : 'text-5xl'} font-black tracking-tighter leading-[0.9] text-slate-900`}>
             Olá,<br />
             <span className="text-blue-800">{user.name.split(' ')[0]}</span>
           </h2>
@@ -375,18 +457,23 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
         </div>
       </div>
 
+      {user.role === 'aluno' && dueSoon.length > 0 && <button type="button" onClick={() => onNavigate('student-assignments')} className="flex w-full items-start gap-3 rounded-md border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-left text-amber-950 hover:bg-amber-100">
+        <BellRing size={18} className="mt-0.5 shrink-0" />
+        <span><strong>{dueSoon.length === 1 ? 'Trabalho com prazo próximo' : `${dueSoon.length} trabalhos com prazo próximo`}</strong><span className="mt-1 block text-sm">{dueSoon.slice(0, 2).map(item => `${item.title}: ${getAssignmentDueNotice(item.dueAt)?.toLowerCase()}`).join(' · ')}</span></span>
+      </button>}
+
       {/* Urgent Highlight - More Striking */}
       <motion.div 
         whileHover={{ scale: 1.01 }}
         onClick={() => onNavigate('campus-news')}
-        className="group relative overflow-hidden bg-red-100 p-px rounded-[32px] cursor-pointer ring-1 ring-red-200 shadow-sm"
+        className={`group relative overflow-hidden cursor-pointer bg-red-100 p-px ring-1 ring-red-200 shadow-sm ${isWeb ? 'web-home-alert rounded-lg' : 'rounded-[32px]'}`}
       >
-        <div className="bg-red-50/50 p-6 rounded-[31px] border border-red-200 relative overflow-hidden">
+        <div className={`relative overflow-hidden border border-red-200 bg-red-50/50 ${isWeb ? 'rounded-[11px] p-4' : 'rounded-[31px] p-6'}`}>
           <div className="absolute -right-4 -top-4 opacity-[0.05] group-hover:opacity-[0.08] transition-opacity">
             <AlertCircle size={140} className="text-red-600 rotate-12" />
           </div>
           
-          <div className="relative z-10 space-y-4">
+          <div className={`relative z-10 ${isWeb ? 'space-y-2' : 'space-y-4'}`}>
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -394,7 +481,7 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
               </span>
               <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-red-600">Destaque Urgente</h3>
             </div>
-            <p className="font-bold text-xl leading-tight text-slate-800 group-hover:text-red-700 transition-colors">
+            <p className={`${isWeb ? 'text-base' : 'text-xl'} font-bold leading-tight text-slate-800 transition-colors group-hover:text-red-700`}>
               Manutenção no Bloco B: Aulas realocadas para o Bloco C hoje.
             </p>
             <div className="flex items-center gap-2 text-xs font-bold text-red-600 group-hover:text-red-700 transition-colors">
@@ -406,13 +493,13 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
       </motion.div>
 
       {/* Modules Grid - Bento Style */}
-      <div className="space-y-6">
+      <div className={`space-y-3 ${isWeb ? 'web-home-modules' : 'space-y-6'}`}>
         <div className="flex items-center justify-between px-2">
           <h3 className="font-black text-xs uppercase tracking-widest text-slate-400">Acesso Rápido</h3>
           <div className="h-px flex-1 bg-slate-200 mx-4" />
         </div>
         
-        <div className="grid gap-5">
+        <div className={isWeb ? 'grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5' : 'grid gap-5'}>
           {isAdmin ? (
             <ModuleCard 
               icon={<Shield />}
@@ -421,16 +508,38 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
               onClick={() => onNavigate('admin')}
               color="bg-slate-900 text-white"
               iconColor="text-white"
+              web={isWeb}
             />
           ) : isProfessor ? (
-            <ModuleCard 
-              icon={<GraduationCap />}
-              title="Minhas Aulas"
-              description="Status de salas e horários."
-              onClick={() => onNavigate('professor-dashboard')}
-              color="bg-blue-900 text-white"
-              iconColor="text-white"
-            />
+            <>
+              <ModuleCard
+                icon={<GraduationCap />}
+                title="Minhas Aulas"
+                description="Status de salas e horários."
+                onClick={() => onNavigate('professor-dashboard')}
+                color="bg-blue-900 text-white"
+                iconColor="text-white"
+                web={isWeb}
+              />
+              {isWeb && <ModuleCard
+                icon={<Calendar />}
+                title="Palestras e eventos"
+                description="Criar eventos e gerar QRs de presença."
+                onClick={() => onNavigate('professor-events')}
+                color="bg-emerald-800 text-white"
+                iconColor="text-white"
+                web
+              />}
+              {isWeb && <ModuleCard
+                icon={<ClipboardList />}
+                title="Trabalhos"
+                description="Publique atividades e prazos."
+                onClick={() => onNavigate('professor-assignments')}
+                color="bg-orange-700/10"
+                iconColor="text-orange-800"
+                web
+              />}
+            </>
           ) : (
             <>
               <ModuleCard
@@ -440,6 +549,7 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
                 onClick={() => onNavigate('campus-news')}
                 color="bg-blue-700/10"
                 iconColor="text-blue-800"
+                web={isWeb}
               />
               <ModuleCard
                 icon={<TrendingUp />}
@@ -448,11 +558,30 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
                 onClick={() => onNavigate('student-performance')}
                 color="bg-emerald-700/10"
                 iconColor="text-emerald-700"
+                web={isWeb}
+              />
+              <ModuleCard
+                icon={<BookOpen />}
+                title="Minhas disciplinas"
+                description="Horários, docentes e carga horária."
+                onClick={() => onNavigate('student-schedule')}
+                color="bg-emerald-700/10"
+                iconColor="text-emerald-700"
+                web={isWeb}
+              />
+              <ModuleCard
+                icon={<ClipboardList />}
+                title="Trabalhos"
+                description="Atividades, prazos e lembretes."
+                onClick={() => onNavigate('student-assignments')}
+                color="bg-orange-700/10"
+                iconColor="text-orange-800"
+                web={isWeb}
               />
             </>
           )}
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className={isWeb ? 'contents' : 'grid grid-cols-2 gap-5'}>
             <ModuleCard 
               icon={<Search />}
               title="Salas"
@@ -461,6 +590,7 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
               color="bg-emerald-700/10"
               iconColor="text-emerald-700"
               compact
+              web={isWeb}
             />
             <ModuleCard 
               icon={<Users />}
@@ -470,35 +600,39 @@ function HomeView({ user, onNavigate }: { user: User, onNavigate: (v: AppView, n
               color="bg-orange-700/10"
               iconColor="text-orange-700"
               compact
+              web={isWeb}
             />
           </div>
+          {isWeb && <CampusPulse compact />}
         </div>
       </div>
 
-      {/* Campus Pulse - New Section */}
-      <div className="bg-white border border-slate-200 p-6 rounded-[32px] space-y-4 shadow-sm">
-        <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-2">
-          <Activity size={12} className="text-blue-800" />
-          Campus Pulse
-        </h3>
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="text-2xl font-black tracking-tighter text-slate-900">85%</div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase">Ocupação</div>
-          </div>
-          <div className="h-8 w-px bg-slate-100" />
-          <div className="space-y-1">
-            <div className="text-2xl font-black tracking-tighter text-slate-900">12 min</div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase">Espera Média</div>
-          </div>
-          <div className="h-8 w-px bg-slate-100" />
-          <div className="space-y-1">
-            <div className="text-2xl font-black tracking-tighter text-slate-900">04</div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase">Eventos</div>
-          </div>
+      {!isWeb && <CampusPulse />}
+    </motion.div>
+  );
+}
+
+function CampusPulse({ compact = false }: { compact?: boolean }) {
+  return (
+    <section className={`bg-white border border-slate-200 shadow-sm ${compact ? 'flex min-h-20 flex-col justify-center gap-3 rounded-lg p-3' : 'space-y-4 rounded-[32px] p-6'}`}>
+      <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+        <Activity size={12} className="text-blue-800" />Campus Pulse
+      </h3>
+      <div className="grid grid-cols-3 divide-x divide-slate-100">
+        <div className="space-y-1 px-2 first:pl-0">
+          <div className={`${compact ? 'text-lg' : 'text-2xl'} font-black tracking-tighter text-slate-900`}>85%</div>
+          <div className="text-[9px] font-bold uppercase text-slate-400">Ocupação</div>
+        </div>
+        <div className="space-y-1 px-2">
+          <div className={`${compact ? 'text-lg' : 'text-2xl'} font-black tracking-tighter text-slate-900`}>12 min</div>
+          <div className="text-[9px] font-bold uppercase text-slate-400">Espera média</div>
+        </div>
+        <div className="space-y-1 px-2 last:pr-0">
+          <div className={`${compact ? 'text-lg' : 'text-2xl'} font-black tracking-tighter text-slate-900`}>04</div>
+          <div className="text-[9px] font-bold uppercase text-slate-400">Eventos</div>
         </div>
       </div>
-    </motion.div>
+    </section>
   );
 }
 
@@ -509,7 +643,8 @@ function ModuleCard({
   onClick, 
   color = "bg-slate-100",
   iconColor = "text-blue-800",
-  compact = false 
+  compact = false,
+  web = false
 }: { 
   icon: React.ReactNode, 
   title: string, 
@@ -517,24 +652,25 @@ function ModuleCard({
   onClick: () => void,
   color?: string,
   iconColor?: string,
-  compact?: boolean
+  compact?: boolean,
+  web?: boolean
 }) {
   return (
     <motion.button 
       whileHover={{ y: -4, scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className={`w-full text-left bg-white p-7 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group relative overflow-hidden ${compact ? 'flex flex-col justify-between h-48' : ''}`}
+      className={`w-full text-left bg-white border border-slate-200 shadow-sm transition-all group relative overflow-hidden hover:shadow-md hover:border-blue-300 ${web ? `rounded-lg ${compact ? 'flex min-h-20 flex-col justify-between p-2.5' : 'min-h-24 p-3'}` : `rounded-[32px] p-7 ${compact ? 'flex h-48 flex-col justify-between' : ''}`}`}
     >
       {/* Decorative Background Element */}
       <div className={`absolute -right-4 -bottom-4 w-32 h-32 rounded-full opacity-0 group-hover:opacity-10 transition-all duration-500 scale-50 group-hover:scale-100 ${color}`} />
       
-      <div className="space-y-5 relative z-10">
-        <div className={`p-4 ${color} rounded-2xl inline-flex group-hover:rotate-6 transition-transform duration-300 ${iconColor}`}>
-          {React.cloneElement(icon as React.ReactElement, { size: compact ? 20 : 24 })}
+      <div className={`${web ? 'space-y-2' : 'space-y-5'} relative z-10`}>
+        <div className={`${web ? 'p-2 rounded-md' : 'p-4 rounded-2xl'} ${color} inline-flex transition-transform duration-300 group-hover:rotate-6 ${iconColor}`}>
+          {React.cloneElement(icon as React.ReactElement, { size: web ? 20 : compact ? 20 : 24 })}
         </div>
         <div className="space-y-1">
-          <h3 className={`${compact ? 'text-xl' : 'text-2xl'} font-black tracking-tight text-slate-900 group-hover:text-blue-800 transition-colors`}>
+          <h3 className={`${web ? (compact ? 'text-base' : 'text-lg') : (compact ? 'text-xl' : 'text-2xl')} font-black tracking-tight text-slate-900 transition-colors group-hover:text-blue-800`}>
             {title}
           </h3>
           <p className={`text-sm font-medium leading-tight ${compact ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -544,7 +680,7 @@ function ModuleCard({
       </div>
       
       {!compact && (
-        <div className="mt-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 group-hover:text-blue-800 transition-all">
+        <div className={`${web ? 'mt-3' : 'mt-8'} flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 transition-all group-hover:text-blue-800`}>
           Acessar módulo
           <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
         </div>
@@ -553,25 +689,26 @@ function ModuleCard({
   );
 }
 
-function JornalView({ onNavigate, news }: { onNavigate: (v: AppView, n?: NewsItem) => void, news: NewsItem[] }) {
+function JornalView({ onNavigate, news, isWeb = false }: { onNavigate: (v: AppView, n?: NewsItem) => void, news: NewsItem[], isWeb?: boolean }) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="p-6 space-y-6"
+      className={isWeb ? 'space-y-4 px-1 py-2 md:px-2' : 'space-y-6 p-6'}
     >
       <div className="flex items-center gap-4">
         <button onClick={() => onNavigate('home')} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
         <h2 className="text-2xl font-bold text-slate-900">Campus News</h2>
       </div>
 
-      <div className="space-y-4">
+      <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-4'}>
         {news.map((newsItem) => (
           <NewsCard 
             key={newsItem.id} 
             news={newsItem} 
             onClick={() => onNavigate('noticia', newsItem)} 
+            isWeb={isWeb}
           />
         ))}
       </div>
@@ -585,7 +722,7 @@ interface NewsCardProps {
   key?: string | number;
 }
 
-function NewsCard({ news, onClick }: NewsCardProps) {
+function NewsCard({ news, onClick, isWeb = false }: NewsCardProps & { isWeb?: boolean }) {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -599,10 +736,10 @@ function NewsCard({ news, onClick }: NewsCardProps) {
     <div 
       ref={ref}
       onClick={onClick}
-      className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm cursor-pointer hover:shadow-md hover:border-blue-300 transition-all hover:-translate-y-1"
+      className={`bg-white border border-slate-200 overflow-hidden shadow-sm cursor-pointer transition-all hover:shadow-md hover:border-blue-300 hover:-translate-y-1 ${isWeb ? 'rounded-lg' : 'rounded-2xl'}`}
     >
       {news.imageUrl && (
-        <div className="h-40 overflow-hidden relative">
+        <div className={`${isWeb ? 'h-32' : 'h-40'} overflow-hidden relative`}>
           <motion.img 
             src={news.imageUrl} 
             alt={news.title} 
@@ -612,14 +749,14 @@ function NewsCard({ news, onClick }: NewsCardProps) {
           />
         </div>
       )}
-      <div className="p-4 space-y-2 relative bg-white/90 backdrop-blur-sm">
+      <div className={`${isWeb ? 'space-y-1.5 p-3' : 'space-y-2 p-4'} relative bg-white/90 backdrop-blur-sm`}>
         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${
           news.category === 'urgente' ? 'bg-red-50 text-red-600 border border-red-100' : 
           news.category === 'evento' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-slate-100 text-slate-500 border border-slate-200'
         }`}>
           {news.category}
         </span>
-        <h3 className="font-bold text-lg leading-tight text-slate-900">{news.title}</h3>
+        <h3 className={`${isWeb ? 'text-base' : 'text-lg'} font-bold leading-tight text-slate-900`}>{news.title}</h3>
         <p className="text-sm text-slate-500 line-clamp-2">{news.summary}</p>
         <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium">
           <Calendar size={12} className="text-blue-700" />
@@ -695,7 +832,7 @@ function NewsDetailView({ news, onBack }: { news: NewsItem, onBack: () => void }
   );
 }
 
-function SalasView({ rooms, onBack }: { rooms: Room[], onBack: () => void }) {
+function SalasView({ rooms, onBack, isWeb = false }: { rooms: Room[], onBack: () => void, isWeb?: boolean }) {
   const [filter, setFilter] = useState('');
   
   const filteredRooms = rooms.filter(r => 
@@ -708,7 +845,7 @@ function SalasView({ rooms, onBack }: { rooms: Room[], onBack: () => void }) {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="p-6 space-y-6"
+      className={isWeb ? 'space-y-4 px-1 py-2 md:px-2' : 'space-y-6 p-6'}
     >
       <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 hover:bg-slate-200 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
@@ -726,9 +863,9 @@ function SalasView({ rooms, onBack }: { rooms: Room[], onBack: () => void }) {
         />
       </div>
 
-      <div className="space-y-4">
+      <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-4'}>
         {filteredRooms.map((room) => (
-          <div key={room.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:border-slate-300 transition-colors">
+          <div key={room.id} className={`bg-white border border-slate-200 shadow-sm hover:border-slate-300 transition-colors ${isWeb ? 'space-y-2 rounded-lg p-3' : 'space-y-3 rounded-2xl p-5'}`}>
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-bold text-lg text-slate-900">{room.name}</h3>
@@ -759,7 +896,7 @@ function SalasView({ rooms, onBack }: { rooms: Room[], onBack: () => void }) {
             </div>
             
             {room.nextClass && (
-              <div className="bg-slate-50 p-3 rounded-xl flex items-center gap-3">
+              <div className={`bg-slate-50 flex items-center gap-3 ${isWeb ? 'rounded-md p-2' : 'rounded-xl p-3'}`}>
                 <Clock size={14} className="text-blue-800" />
                 <span className="text-xs text-slate-600 font-medium">Próxima aula: <span className="text-slate-900 font-bold">{room.nextClass}</span></span>
               </div>
@@ -771,7 +908,7 @@ function SalasView({ rooms, onBack }: { rooms: Room[], onBack: () => void }) {
   );
 }
 
-function FilasView({ sectors, onJoin, onBack }: { sectors: QueueSector[], onJoin: (t: QueueTicket) => void, onBack: () => void }) {
+function FilasView({ sectors, onJoin, onBack, isWeb = false }: { sectors: QueueSector[], onJoin: (t: QueueTicket) => void, onBack: () => void, isWeb?: boolean }) {
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
 
   const handleJoin = async () => {
@@ -791,7 +928,7 @@ function FilasView({ sectors, onJoin, onBack }: { sectors: QueueSector[], onJoin
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="p-6 space-y-6"
+      className={isWeb ? 'space-y-4 px-1 py-2 md:px-2' : 'space-y-6 p-6'}
     >
       <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 hover:bg-slate-200 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
@@ -800,12 +937,12 @@ function FilasView({ sectors, onJoin, onBack }: { sectors: QueueSector[], onJoin
 
       <p className="text-slate-500 font-medium">Selecione o setor que deseja atendimento para entrar na fila virtual.</p>
 
-      <div className="space-y-4">
+      <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-4'}>
         {sectors.map((sector) => (
           <button 
             key={sector.id}
             onClick={() => setSelectedSector(sector.id)}
-            className={`w-full text-left p-6 rounded-2xl border transition-all ${
+            className={`w-full text-left border transition-all ${isWeb ? 'rounded-lg p-4' : 'rounded-2xl p-6'} ${
               selectedSector === sector.id 
                 ? 'border-blue-500 bg-blue-50 shadow-sm' 
                 : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300'
@@ -818,7 +955,7 @@ function FilasView({ sectors, onJoin, onBack }: { sectors: QueueSector[], onJoin
                 {sector.waitingCount} em espera
               </div>
             </div>
-            <p className={`text-sm mb-4 leading-relaxed ${selectedSector === sector.id ? 'text-blue-600/80' : 'text-slate-500'}`}>
+            <p className={`text-sm ${isWeb ? 'mb-2' : 'mb-4'} leading-relaxed ${selectedSector === sector.id ? 'text-blue-600/80' : 'text-slate-500'}`}>
               {sector.description}
             </p>
             <div className="flex items-center gap-4">
@@ -834,7 +971,7 @@ function FilasView({ sectors, onJoin, onBack }: { sectors: QueueSector[], onJoin
       <button 
         disabled={!selectedSector}
         onClick={handleJoin}
-        className="w-full bg-blue-700 text-white py-5 rounded-2xl font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-800 transition-all mt-4 sticky bottom-6 shadow-xl shadow-blue-700/20 uppercase tracking-widest text-xs"
+        className={`bg-blue-700 text-white font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-800 transition-all shadow-xl shadow-blue-700/20 uppercase tracking-widest text-xs ${isWeb ? 'ml-auto block w-fit min-w-48 rounded-md px-5 py-2.5' : 'sticky bottom-6 mt-4 w-full rounded-2xl py-5'}`}
       >
         Entrar na Fila
       </button>
@@ -899,9 +1036,9 @@ function AcompanhamentoView({ sectors, ticket, onExit }: { sectors: QueueSector[
   );
 }
 
-function AdminActionButton({ label, color, icon, onClick }: { label: string, color: string, icon?: React.ReactNode, onClick?: () => void }) {
+function AdminActionButton({ label, color, icon, onClick, compact = false }: { label: string, color: string, icon?: React.ReactNode, onClick?: () => void, compact?: boolean }) {
   return (
-    <button onClick={onClick} className={`p-4 ${color} rounded-2xl text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all text-left shadow-sm flex flex-col gap-2`}>
+    <button onClick={onClick} className={`${compact ? 'min-h-20 rounded-lg p-3' : 'p-4 rounded-2xl'} ${color} text-[11px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all text-left shadow-sm flex flex-col gap-2`}>
       {icon && <div className="opacity-80">{icon}</div>}
       {label}
     </button>
@@ -1027,20 +1164,21 @@ function LoginView({
   );
 }
 
-function ProfessorDashboard({ onBack, onSelectTool }: { onBack: () => void, onSelectTool: (tool: 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'student-performance') => void }) {
+function ProfessorDashboard({ onBack, onSelectTool, isWeb = false }: { onBack: () => void, onSelectTool: (tool: 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'professor-events' | 'professor-assignments' | 'student-performance') => void, isWeb?: boolean }) {
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="p-6 space-y-8"
+      className={isWeb ? 'web-prof-dashboard space-y-5 px-1 py-2 md:px-2' : 'space-y-8 px-1 py-5 md:px-2 md:py-8'}
     >
-      <div className="flex items-center gap-4">
+      <div className={`flex items-center gap-4 ${isWeb ? 'web-prof-dashboard-header' : ''}`}>
         <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
         <h2 className="text-2xl font-bold text-slate-900">Painel do Professor</h2>
       </div>
 
-      <div className="bg-blue-900 text-white p-8 rounded-[40px] space-y-6 shadow-xl relative overflow-hidden">
+      <div className={`grid gap-4 ${isWeb ? 'web-prof-dashboard-main xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]' : 'lg:grid-cols-[1.2fr_0.8fr]'} lg:items-start`}>
+      <div className={`bg-blue-900 text-white rounded-2xl space-y-5 shadow-xl relative overflow-hidden ${isWeb ? 'web-prof-room p-5' : 'p-6 md:p-8'}`}>
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
         <div className="space-y-1">
           <h3 className="text-3xl font-black tracking-tight">Sala B-102</h3>
@@ -1061,138 +1199,242 @@ function ProfessorDashboard({ onBack, onSelectTool }: { onBack: () => void, onSe
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className={`grid grid-cols-2 ${isWeb ? 'web-prof-stats gap-2 xl:grid-cols-1' : 'gap-4 lg:grid-cols-1'}`}>
         <StatCard icon={<Clock size={16} />} label="Tempo Restante" value="45m" trend="Ontime" />
         <StatCard icon={<Search size={16} />} label="Salas do Bloco" value="08 Free" trend="Live" />
       </div>
 
-      <div className="space-y-4">
+      </div>
+      <div className={`space-y-3 ${isWeb ? 'web-prof-tools pt-1' : 'space-y-4'}`}>
         <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-400 px-2">Ferramentas Docentes</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <AdminActionButton label="Lista Presença" color="bg-white border-slate-200 text-slate-900" icon={<Users size={16} />} onClick={() => onSelectTool('professor-attendance')} />
-          <AdminActionButton label="Reservar Lab" color="bg-white border-slate-200 text-slate-900" icon={<Calendar size={16} />} onClick={() => onSelectTool('professor-lab')} />
-          <AdminActionButton label="Avisos Turma" color="bg-white border-slate-200 text-slate-900" icon={<Newspaper size={16} />} onClick={() => onSelectTool('professor-notices')} />
-          <AdminActionButton label="Relatórios" color="bg-white border-slate-200 text-slate-900" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-reports')} />
-          <AdminActionButton label="Notas" color="bg-blue-100 border-blue-200 text-blue-800" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-grades')} />
-          <AdminActionButton label="Desempenho" color="bg-emerald-100 border-emerald-200 text-emerald-800" icon={<Activity size={16} />} onClick={() => onSelectTool('student-performance')} />
+        <div className={`grid grid-cols-2 ${isWeb ? 'gap-2 sm:grid-cols-3 xl:grid-cols-4' : 'gap-3 sm:grid-cols-3 lg:grid-cols-2'}`}>
+          <AdminActionButton compact={isWeb} label="Palestras e QRs" color="bg-emerald-800 border-emerald-900 text-white" icon={<Calendar size={16} />} onClick={() => onSelectTool('professor-events')} />
+          <AdminActionButton compact={isWeb} label="Trabalhos" color="bg-orange-100 border-orange-200 text-orange-900" icon={<ClipboardList size={16} />} onClick={() => onSelectTool('professor-assignments')} />
+          <AdminActionButton compact={isWeb} label="Lista Presença" color="bg-white border-slate-200 text-slate-900" icon={<Users size={16} />} onClick={() => onSelectTool('professor-attendance')} />
+          <AdminActionButton compact={isWeb} label="Reservar Lab" color="bg-white border-slate-200 text-slate-900" icon={<Calendar size={16} />} onClick={() => onSelectTool('professor-lab')} />
+          <AdminActionButton compact={isWeb} label="Avisos Turma" color="bg-white border-slate-200 text-slate-900" icon={<Newspaper size={16} />} onClick={() => onSelectTool('professor-notices')} />
+          <AdminActionButton compact={isWeb} label="Relatórios" color="bg-white border-slate-200 text-slate-900" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-reports')} />
+          <AdminActionButton compact={isWeb} label="Notas" color="bg-blue-100 border-blue-200 text-blue-800" icon={<TrendingUp size={16} />} onClick={() => onSelectTool('professor-grades')} />
+          <AdminActionButton compact={isWeb} label="Desempenho" color="bg-emerald-100 border-emerald-200 text-emerald-800" icon={<Activity size={16} />} onClick={() => onSelectTool('student-performance')} />
         </div>
       </div>
     </motion.div>
   );
 }
 
-function ProfessorGradesView({ onBack, grades, setGrades, subjects }: { onBack: () => void, grades: GradeRecord[], setGrades: React.Dispatch<React.SetStateAction<GradeRecord[]>>, subjects: CourseSubject[] }) {
-  const updateGrade = (id: string, nextValue: number) => {
-    setGrades(prev => prev.map(grade =>
-      grade.id === id
-        ? { ...grade, value: nextValue, status: nextValue >= 7 ? 'Aprovado' : nextValue >= 5 ? 'Recuperação' : 'Reprovado' }
-        : grade
-    ));
+function ProfessorGradesView({ onBack, subjects }: { onBack: () => void; subjects: CourseSubject[] }) {
+  const [students, setStudents] = useState<User[]>([]);
+  const [assessments, setAssessments] = useState<SubjectAssessmentRecord[]>([]);
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
+  const [period, setPeriod] = useState<GradeRecord['period']>('1º Bimestre');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const assessmentTypes: AssessmentType[] = ['N1', 'N2', 'Trabalho', 'Exame'];
+
+  useEffect(() => {
+    void Promise.all([academicApi.listStudents(), academicApi.listAssessments()])
+      .then(([studentRecords, assessmentRecords]) => {
+        setStudents(studentRecords);
+        setAssessments(assessmentRecords);
+      })
+      .catch(loadError => setMessage(loadError instanceof Error ? loadError.message : 'Não foi possível carregar a lista.'))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const nextValues: Record<string, string> = {};
+    assessments.filter(record => record.subjectId === subjectId && record.period === period)
+      .forEach(record => { nextValues[`${record.studentId}:${record.assessmentType}`] = String(record.value); });
+    setValues(nextValues);
+  }, [assessments, subjectId, period]);
+
+  const saveAssessments = async () => {
+    setIsSaving(true);
+    setMessage('');
+    try {
+      const pending = students.flatMap(student => assessmentTypes.flatMap(assessmentType => {
+        const value = values[`${student.id}:${assessmentType}`];
+        if (value === undefined || value === '') return [];
+        return [{ studentId: student.id, subjectId, assessmentType, period, value: Number(value) }];
+      }));
+      const savedRecords = await Promise.all(pending.map(record => academicApi.saveAssessment(record)));
+      setAssessments(previous => {
+        const replaced = previous.filter(record => !(record.subjectId === subjectId && record.period === period));
+        return [...replaced, ...savedRecords];
+      });
+      setMessage(savedRecords.length ? 'Planilha salva no boletim dos alunos.' : 'Preencha ao menos uma nota antes de salvar.');
+    } catch (saveError) {
+      setMessage(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a nota.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
-        <h2 className="text-2xl font-bold text-slate-900">Lançamento de Notas</h2>
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5 px-1 py-3 md:px-2">
+      <div className="flex items-center gap-4"><button onClick={onBack} className="rounded-full p-2 text-slate-600 hover:bg-slate-100"><ArrowLeft size={20} /></button><div><p className="text-xs font-bold uppercase tracking-widest text-emerald-800">Área docente</p><h2 className="text-2xl font-bold text-slate-900">Lançamento de notas</h2></div></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm font-semibold text-slate-700">Matéria<select value={subjectId} onChange={event => setSubjectId(event.target.value)} className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">{subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
+        <label className="text-sm font-semibold text-slate-700">Período<select value={period} onChange={event => setPeriod(event.target.value as GradeRecord['period'])} className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5"><option>1º Bimestre</option><option>2º Bimestre</option><option>3º Bimestre</option><option>4º Bimestre</option></select></label>
       </div>
-
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Disciplinas ativas</p>
-        <div className="space-y-2">
-          {subjects.map(subject => (
-            <div key={subject.id} className="bg-white border border-slate-200 rounded-xl p-3">
-              <p className="font-bold text-slate-900">{subject.name}</p>
-              <p className="text-xs text-slate-500">{subject.teacher} • {subject.schedule}</p>
-            </div>
-          ))}
-        </div>
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+          <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600"><tr><th className="sticky left-0 bg-slate-100 px-4 py-3 font-bold">Aluno</th>{assessmentTypes.map(type => <th key={type} className="px-3 py-3 text-center font-bold">{type}</th>)}<th className="px-3 py-3 text-center font-bold">Média parcial</th></tr></thead>
+          <tbody>
+            {isLoading ? <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Carregando planilha...</td></tr> : students.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Nenhum aluno cadastrado.</td></tr> : students.map(student => {
+              const rowValues = assessmentTypes.map(type => Number(values[`${student.id}:${type}`])).filter(Number.isFinite);
+              const rowAverage = rowValues.length ? (rowValues.reduce((sum, grade) => sum + grade, 0) / rowValues.length).toFixed(1) : '—';
+              return <tr key={student.id} className="border-t border-slate-200">
+                <th scope="row" className="sticky left-0 bg-white px-4 py-2.5 font-semibold text-slate-900">{student.name}</th>
+                {assessmentTypes.map(type => <td key={type} className="px-2 py-2 text-center"><input aria-label={`${type} - ${student.name}`} type="number" min="0" max="10" step="0.1" value={values[`${student.id}:${type}`] ?? ''} onChange={event => setValues(previous => ({ ...previous, [`${student.id}:${type}`]: event.target.value }))} className="w-20 rounded-md border border-slate-300 px-2 py-1.5 text-center font-semibold text-slate-900 focus:border-emerald-700 focus:outline-none" /></td>)}
+                <td className="px-3 py-2 text-center font-bold text-slate-800">{rowAverage}</td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
       </div>
-
-      <div className="space-y-3">
-        {grades.map(grade => (
-          <div key={grade.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-bold text-slate-900">{grade.studentName}</p>
-                <p className="text-xs text-slate-500">{grade.subjectName} • {grade.period}</p>
-              </div>
-              <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${grade.status === 'Aprovado' ? 'bg-emerald-100 text-emerald-700' : grade.status === 'Recuperação' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                {grade.status}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={0}
-                max={10}
-                step={0.1}
-                value={grade.value}
-                onChange={(e) => updateGrade(grade.id, Number(e.target.value || 0))}
-                className="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-sm font-bold text-slate-500">/ 10</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => void saveAssessments()} disabled={isLoading || isSaving || students.length === 0} className="rounded-md bg-emerald-800 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-900 disabled:opacity-50">{isSaving ? 'Salvando planilha...' : 'Salvar planilha'}</button>{message && <p role="status" className="text-sm text-slate-600">{message}</p>}</div>
     </motion.div>
   );
 }
 
-function StudentPerformanceView({ onBack, userName, grades, subjects }: { onBack: () => void, userName: string, grades: GradeRecord[], subjects: CourseSubject[] }) {
-  const average = (grades.reduce((sum, grade) => sum + grade.value, 0) / Math.max(grades.length, 1)).toFixed(1);
+function StudentPerformanceView({ onBack, userName, assessments, attendance, subjects, isWeb = false }: { onBack: () => void; userName: string; assessments: SubjectAssessmentRecord[]; attendance: ClassAttendanceRecord[]; subjects: CourseSubject[]; isWeb?: boolean }) {
+  const subjectAverages = subjects.map(subject => {
+    const rows = assessments.filter(record => record.subjectId === subject.id && record.assessmentType !== 'Exame');
+    return rows.length ? rows.reduce((sum, record) => sum + record.value, 0) / rows.length : null;
+  }).filter((value): value is number => value !== null);
+  const average = subjectAverages.length ? (subjectAverages.reduce((sum, value) => sum + value, 0) / subjectAverages.length).toFixed(1) : '—';
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+
+  const selectedSubject = subjects.find(subject => subject.id === selectedSubjectId);
+  if (selectedSubject) {
+    const subjectRecords = assessments.filter(record => record.subjectId === selectedSubject.id);
+    const subjectAttendance = attendance.filter(record => record.subjectId === selectedSubject.id);
+    const absences = subjectAttendance.filter(record => record.status === 'ausente').length;
+    const attendancePercent = subjectAttendance.length
+      ? Math.round(((subjectAttendance.length - absences) / subjectAttendance.length) * 100)
+      : null;
+    const countedScores = subjectRecords.filter(record => record.assessmentType !== 'Exame');
+    const subjectAverage = countedScores.length
+      ? (countedScores.reduce((sum, record) => sum + record.value, 0) / countedScores.length).toFixed(1)
+      : '—';
+
+    return (
+      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className={isWeb ? 'space-y-4 px-1 py-2 md:px-2' : 'space-y-6 p-6'}>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => setSelectedSubjectId(null)} className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            <ArrowLeft size={18} />Voltar às matérias
+          </button>
+          <h2 className="text-xl font-bold text-slate-900">Boletim da matéria</h2>
+        </div>
+
+        <section className={`flex flex-wrap items-start justify-between gap-4 border border-slate-200 bg-white ${isWeb ? 'rounded-lg p-4' : 'rounded-2xl p-5'}`}>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-800">{selectedSubject.teacher}</p>
+            <h3 className="mt-1 text-2xl font-bold text-slate-900">{selectedSubject.name}</h3>
+            <p className="mt-1 text-sm text-slate-500">{selectedSubject.schedule} · {selectedSubject.workload} horas</p>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-900">Dados lançados pelo professor</span>
+        </section>
+
+        <section className="grid gap-3 sm:grid-cols-3">
+          <SubjectMetric label="Média parcial simples" value={subjectAverage} />
+          <SubjectMetric label="Presença" value={attendancePercent === null ? 'Sem dados' : `${attendancePercent}%`} />
+          <SubjectMetric label="Faltas" value={`${absences} de ${subjectAttendance.length} aulas registradas`} />
+        </section>
+
+        {attendancePercent !== null && <section aria-label="Percentual de presença" className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-600"><span>Frequência</span><span className="font-bold text-emerald-800">{attendancePercent}%</span></div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuenow={attendancePercent} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full rounded-full bg-emerald-600" style={{ width: `${attendancePercent}%` }} />
+          </div>
+        </section>}
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">Planilha de avaliações</h3>
+            <span className="text-xs text-slate-500">Aluno: {userName}</span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+              <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                <tr><th className="px-4 py-3 font-bold">Período</th><th className="px-4 py-3 font-bold">Avaliação</th><th className="px-4 py-3 font-bold">Nota</th></tr>
+              </thead>
+              <tbody>
+                {subjectRecords.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-500">Nenhuma nota lançada nesta matéria.</td></tr> : subjectRecords.map(record => <tr key={record.id} className="border-t border-slate-200">
+                  <td className="px-4 py-3 text-slate-600">{record.period}</td>
+                  <th scope="row" className="px-4 py-3 font-semibold text-slate-800">{record.assessmentType}</th>
+                  <td className="px-4 py-3 font-bold text-slate-900">{record.value.toFixed(1)}</td>
+                </tr>)}
+                {subjectRecords.length > 0 && <tr className="border-t-2 border-slate-300 bg-slate-50">
+                  <td className="px-4 py-3 font-semibold text-slate-700">Notas sem exame</td>
+                  <th scope="row" className="px-4 py-3 font-bold text-slate-900">Média parcial simples</th>
+                  <td className="px-4 py-3 font-black text-slate-900">{subjectAverage}</td>
+                </tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">Frequência por aula</h3>
+          {subjectAttendance.length === 0 ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Nenhuma chamada registrada nesta matéria.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="w-full min-w-[420px] border-collapse text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-600"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Situação</th></tr></thead><tbody>{subjectAttendance.slice().sort((a, b) => b.date.localeCompare(a.date)).map(record => <tr key={record.id} className="border-t border-slate-200"><td className="px-4 py-3">{new Date(`${record.date}T12:00:00`).toLocaleDateString('pt-BR')}</td><td className="px-4 py-3 capitalize">{record.status}</td></tr>)}</tbody></table></div>}
+        </section>
+      </motion.div>
+    );
+  }
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-6 space-y-6">
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className={isWeb ? 'space-y-4 px-1 py-2 md:px-2' : 'space-y-6 p-6'}>
       <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors"><ArrowLeft size={20} /></button>
         <h2 className="text-2xl font-bold text-slate-900">Desempenho e Matérias</h2>
       </div>
 
-      <div className="bg-gradient-to-br from-blue-900 to-blue-700 text-white p-6 rounded-[32px] shadow-lg shadow-blue-900/20">
+      <div className={`bg-gradient-to-br from-blue-900 to-blue-700 text-white shadow-lg shadow-blue-900/20 ${isWeb ? 'rounded-xl p-4' : 'rounded-[32px] p-6'}`}>
         <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Média geral</p>
         <p className="text-5xl font-black tracking-tight mt-2">{average}</p>
         <p className="mt-3 text-sm opacity-85">Aluno: {userName}</p>
       </div>
 
-      <div className="space-y-3">
+      <section className="space-y-3">
         <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Matérias</h3>
-        {subjects.map(subject => (
-          <div key={subject.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-bold text-slate-900">{subject.name}</p>
-                <p className="text-xs text-slate-500">{subject.teacher}</p>
-              </div>
-              <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-2 py-1 rounded-full">{subject.credits} créditos</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-              <span>{subject.schedule}</span>
-              <span>{subject.workload}h</span>
-            </div>
-          </div>
-        ))}
-      </div>
+        <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
+          {subjects.map(subject => (
+              <button
+                  key={subject.id}
+                  type="button"
+                  onClick={() => setSelectedSubjectId(subject.id)}
+                  className={`w-full border border-slate-200 bg-white text-left shadow-sm transition-colors hover:border-emerald-700 hover:bg-slate-50 ${isWeb ? 'rounded-lg p-3' : 'rounded-2xl p-4'}`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-slate-900">{subject.name}</p>
+                      <p className="text-xs text-slate-500">{subject.teacher}</p>
+                    </div>
+                    <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-2 py-1 rounded-full">{subject.credits} créditos</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span>{subject.schedule}</span>
+                    <span>{subject.workload}h</span>
+                  </div>
+                </button>
+          ))}
+        </div>
+      </section>
 
-      <div className="space-y-3">
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Notas</h3>
-        {grades.map(grade => (
-          <div key={grade.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold text-slate-900">{grade.subjectName}</p>
-              <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${grade.status === 'Aprovado' ? 'bg-emerald-100 text-emerald-700' : grade.status === 'Recuperação' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                {grade.status}
-              </span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
-              <span>{grade.period}</span>
-              <span className="font-black text-slate-900">{grade.value.toFixed(1)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <section className="space-y-3"><h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Resumo das notas lançadas</h3><div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>{subjects.map(subject => { const records = assessments.filter(record => record.subjectId === subject.id); const marked = attendance.filter(record => record.subjectId === subject.id); const absences = marked.filter(record => record.status === 'ausente').length; const scoreRows = records.filter(record => record.assessmentType !== 'Exame'); const avg = scoreRows.length ? (scoreRows.reduce((sum, record) => sum + record.value, 0) / scoreRows.length).toFixed(1) : '—'; return <article key={subject.id} className={`border border-slate-200 bg-white shadow-sm ${isWeb ? 'rounded-lg p-3' : 'rounded-2xl p-4'}`}><h4 className="font-bold text-slate-900">{subject.name}</h4><div className="mt-2 flex justify-between gap-3 text-sm text-slate-600"><span>Média parcial simples</span><strong className="text-slate-900">{avg}</strong></div><div className="mt-1 flex justify-between gap-3 text-sm text-slate-600"><span>Faltas</span><strong className="text-slate-900">{absences} / {marked.length}</strong></div></article>; })}</div></section>
     </motion.div>
+  );
+}
+
+function SubjectMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-2">
+      <p className="text-[10px] font-bold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 truncate text-sm font-bold text-slate-900">{value}</p>
+    </div>
   );
 }

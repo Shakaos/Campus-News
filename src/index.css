@@ -43,3 +43,86 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+@media (min-width: 1024px) {
+  .web-home {
+    grid-template-areas:
+      "greeting greeting"
+      "alert alert"
+      "modules modules";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .web-home-greeting { grid-area: greeting; }
+  .web-home-alert { grid-area: alert; }
+  .web-home-modules { grid-area: modules; }
+}
+
+@media (min-width: 900px) and (max-width: 1023px) {
+  .web-home {
+    grid-template-areas:
+      "greeting greeting"
+      "alert alert"
+      "modules modules";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .web-home-greeting { grid-area: greeting; }
+  .web-home-alert { grid-area: alert; }
+  .web-home-modules { grid-area: modules; }
+}
+
+@media (min-width: 1024px) {
+  .web-prof-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+    gap: 1rem;
+  }
+
+  .web-prof-dashboard > :not(:first-child) {
+    margin-top: 0;
+  }
+
+  .web-prof-dashboard-header {
+    grid-column: 1 / -1;
+  }
+
+  .web-prof-dashboard-main {
+    display: contents;
+  }
+
+  .web-prof-room {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+  }
+
+  .web-prof-stats {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .web-prof-tools {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .event-certificate,
+  .event-certificate * {
+    visibility: visible !important;
+  }
+
+  .event-certificate {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+}

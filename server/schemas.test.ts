@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LoginSchema, NewsSchema, RoomSchema } from '../server/schemas';
+import { AssignmentCompletionSchema, AssignmentSchema, CampusEventSchema, ClassAttendanceSchema, EventQrTokenSchema, LoginSchema, NewsSchema, RoomSchema, SubjectAssessmentSchema } from '../server/schemas';
 
 describe('Validation Schemas', () => {
   describe('LoginSchema', () => {
@@ -107,6 +107,76 @@ describe('Validation Schemas', () => {
       };
       const result = RoomSchema.safeParse(data);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('CampusEventSchema', () => {
+    const validEvent = {
+      title: 'Palestra de tecnologia',
+      description: 'Tendências de tecnologia no campus',
+      location: 'Auditório Central',
+      startsAt: '2026-10-21T14:00:00.000Z',
+      endsAt: '2026-10-21T16:00:00.000Z',
+    };
+
+    it('should accept an event with a valid date range', () => {
+      expect(CampusEventSchema.safeParse(validEvent).success).toBe(true);
+    });
+
+    it('should reject an event that ends before it starts', () => {
+      expect(CampusEventSchema.safeParse({ ...validEvent, endsAt: '2026-10-21T13:00:00.000Z' }).success).toBe(false);
+    });
+  });
+
+  describe('Academic records', () => {
+    it('accepts an assessment grade from 0 to 10', () => {
+      expect(SubjectAssessmentSchema.safeParse({
+        studentId: 'student-1',
+        subjectId: 'alg',
+        assessmentType: 'N1',
+        period: '1º Bimestre',
+        value: 8.5,
+      }).success).toBe(true);
+    });
+
+    it('rejects assessment grades outside the allowed range', () => {
+      expect(SubjectAssessmentSchema.safeParse({
+        studentId: 'student-1',
+        subjectId: 'alg',
+        assessmentType: 'N2',
+        period: '1º Bimestre',
+        value: 11,
+      }).success).toBe(false);
+    });
+
+    it('accepts per-student attendance for a class date', () => {
+      expect(ClassAttendanceSchema.safeParse({
+        subjectId: 'alg',
+        date: '2026-10-21',
+        records: [{ studentId: 'student-1', status: 'ausente' }],
+      }).success).toBe(true);
+    });
+  });
+
+  describe('Event QR tokens', () => {
+    it('requires an individual student and a valid phase', () => {
+      expect(EventQrTokenSchema.safeParse({ studentId: 'student-1', phase: 'entry' }).success).toBe(true);
+      expect(EventQrTokenSchema.safeParse({ studentId: 'student-1', phase: 'other' }).success).toBe(false);
+    });
+  });
+
+  describe('Assignments', () => {
+    it('accepts a work item with a due date', () => {
+      expect(AssignmentSchema.safeParse({
+        subjectId: 'alg',
+        title: 'Lista de exercícios',
+        description: 'Resolver as questões 1 a 10.',
+        dueAt: '2026-10-22T23:59:00.000Z',
+      }).success).toBe(true);
+    });
+
+    it('rejects an invalid work completion state', () => {
+      expect(AssignmentCompletionSchema.safeParse({ completed: 'sim' }).success).toBe(false);
     });
   });
 });

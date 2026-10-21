@@ -13,11 +13,47 @@ export const getGrades = (studentId?: string) => {
   return db.prepare('SELECT * FROM grades ORDER BY subjectName, studentName').all();
 };
 
+export const getSubjectAssessments = (studentId?: string) => studentId
+  ? db.prepare('SELECT * FROM subject_assessments WHERE studentId = ? ORDER BY subjectName, period, assessmentType').all(studentId)
+  : db.prepare('SELECT * FROM subject_assessments ORDER BY subjectName, studentName, period, assessmentType').all();
+
+export const saveSubjectAssessment = (data: {
+  id: string; studentId: string; studentName: string; subjectId: string; subjectName: string;
+  assessmentType: string; period: string; value: number; professorId: string; updatedAt: string;
+}) => {
+  db.prepare(`INSERT INTO subject_assessments
+    (id, studentId, studentName, subjectId, subjectName, assessmentType, period, value, professorId, updatedAt)
+    VALUES (@id, @studentId, @studentName, @subjectId, @subjectName, @assessmentType, @period, @value, @professorId, @updatedAt)
+    ON CONFLICT(studentId, subjectId, assessmentType, period) DO UPDATE SET
+      value = excluded.value, professorId = excluded.professorId, updatedAt = excluded.updatedAt`
+  ).run(data);
+  return db.prepare(`SELECT * FROM subject_assessments
+    WHERE studentId = ? AND subjectId = ? AND assessmentType = ? AND period = ?`
+  ).get(data.studentId, data.subjectId, data.assessmentType, data.period);
+};
+
+export const getClassAttendance = (subjectId: string) =>
+  db.prepare('SELECT * FROM class_attendance WHERE subjectId = ? ORDER BY date DESC, studentName').all(subjectId);
+
+export const getStudentAttendance = (studentId: string) =>
+  db.prepare('SELECT * FROM class_attendance WHERE studentId = ? ORDER BY date DESC, subjectId').all(studentId);
+
+export const saveClassAttendanceRecord = (data: {
+  id: string; studentId: string; studentName: string; subjectId: string; date: string; status: string; professorId: string;
+}) => {
+  db.prepare(`INSERT INTO class_attendance (id, studentId, studentName, subjectId, date, status, professorId)
+    VALUES (@id, @studentId, @studentName, @subjectId, @date, @status, @professorId)
+    ON CONFLICT(studentId, subjectId, date) DO UPDATE SET status = excluded.status, professorId = excluded.professorId`
+  ).run(data);
+};
+
 export const findUserByEmailOrRole = (value: string) =>
   db.prepare('SELECT * FROM users WHERE email = ? OR role = ? LIMIT 1').get(value, value) as any;
 
 export const findUserByEmail = (email: string) =>
   db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1').get(email) as any;
+export const findUserById = (id: string) =>
+  db.prepare('SELECT id, name, role, email FROM users WHERE id = ? LIMIT 1').get(id) as any;
 
 export const createUser = (data: { id: string; name: string; role: string; email: string; password: string }) => {
   db.prepare(`
@@ -164,6 +200,70 @@ export const createAttendance = (data: {
 export const getAttendanceByClass = (classId: string) =>
   db.prepare('SELECT * FROM attendance_records WHERE classId = ? ORDER BY timestamp DESC').all(classId);
 
+export const createCampusEvent = (event: {
+  id: string; professorId: string; title: string; description: string; location: string;
+  startsAt: string; endsAt: string; entryToken: string; exitToken: string; createdAt: string;
+}) => {
+  db.prepare(`INSERT INTO campus_events
+    (id, professorId, title, description, location, startsAt, endsAt, entryToken, exitToken, createdAt)
+    VALUES (@id, @professorId, @title, @description, @location, @startsAt, @endsAt, @entryToken, @exitToken, @createdAt)`
+  ).run(event);
+  return event;
+};
+
+export const getCampusEventsByProfessor = (professorId: string) =>
+  db.prepare(`SELECT e.id, e.professorId, e.title, e.description, e.location, e.startsAt, e.endsAt, e.createdAt,
+    COUNT(a.id) AS attendeeCount,
+    SUM(CASE WHEN a.checkedInAt IS NOT NULL AND a.checkedOutAt IS NOT NULL THEN 1 ELSE 0 END) AS completedCount
+    FROM campus_events e LEFT JOIN event_attendance a ON a.eventId = e.id
+    WHERE e.professorId = ? GROUP BY e.id ORDER BY e.startsAt DESC`).all(professorId);
+
+export const getCampusEventByToken = (token: string) =>
+  db.prepare('SELECT *, CASE WHEN entryToken = ? THEN \'entry\' ELSE \'exit\' END AS phase FROM campus_events WHERE entryToken = ? OR exitToken = ?').get(token, token, token) as any;
+
+export const getCampusEventById = (id: string) =>
+  db.prepare('SELECT * FROM campus_events WHERE id = ?').get(id) as any;
+
+export const createEventQrToken = (data: { token: string; eventId: string; studentId: string; phase: 'entry' | 'exit'; expiresAt: string; createdAt: string }) => {
+  const createToken = db.transaction(() => {
+    db.prepare(`DELETE FROM event_qr_tokens WHERE eventId = ? AND studentId = ? AND phase = ? AND usedAt IS NULL`)
+      .run(data.eventId, data.studentId, data.phase);
+    db.prepare(`INSERT INTO event_qr_tokens (token, eventId, studentId, phase, expiresAt, createdAt)
+      VALUES (@token, @eventId, @studentId, @phase, @expiresAt, @createdAt)`
+    ).run(data);
+  });
+  createToken();
+};
+
+export const getEventByQrToken = (token: string) =>
+  db.prepare(`SELECT q.token, q.studentId AS tokenStudentId, q.phase, q.expiresAt, q.usedAt,
+    e.id, e.professorId, e.title, e.location, e.startsAt, e.endsAt
+    FROM event_qr_tokens q JOIN campus_events e ON e.id = q.eventId WHERE q.token = ?`).get(token) as any;
+
+export const getEventAttendanceRecord = (eventId: string, studentId: string) =>
+  db.prepare('SELECT * FROM event_attendance WHERE eventId = ? AND studentId = ?').get(eventId, studentId) as any;
+
+export const markEventQrTokenUsed = (token: string, usedAt: string) =>
+  db.prepare('UPDATE event_qr_tokens SET usedAt = ? WHERE token = ? AND usedAt IS NULL').run(usedAt, token).changes > 0;
+
+export const recordEventCheckIn = (data: { id: string; eventId: string; studentId: string; studentName: string; phase: 'entry' | 'exit'; timestamp: string }) => {
+  if (data.phase === 'entry') {
+    db.prepare(`INSERT INTO event_attendance (id, eventId, studentId, studentName, checkedInAt)
+      VALUES (@id, @eventId, @studentId, @studentName, @timestamp)
+      ON CONFLICT(eventId, studentId) DO UPDATE SET checkedInAt = COALESCE(checkedInAt, excluded.checkedInAt)`
+    ).run(data);
+  } else {
+    db.prepare(`UPDATE event_attendance SET checkedOutAt = COALESCE(checkedOutAt, @timestamp)
+      WHERE eventId = @eventId AND studentId = @studentId AND checkedInAt IS NOT NULL`).run(data);
+  }
+  return db.prepare('SELECT * FROM event_attendance WHERE eventId = ? AND studentId = ?').get(data.eventId, data.studentId) as any;
+};
+
+export const getEventAttendanceForStudent = (studentId: string) =>
+  db.prepare(`SELECT a.*, e.title, e.description, e.location, e.startsAt, e.endsAt
+    FROM event_attendance a JOIN campus_events e ON e.id = a.eventId
+    WHERE a.studentId = ? ORDER BY e.startsAt DESC`).all(studentId);
+
 export const updateAttendance = (id: string, data: Partial<{ status: string }>) => {
   const updates = Object.entries(data)
     .filter(([, v]) => v !== undefined)
@@ -220,6 +320,41 @@ export const createClassNotice = (data: {
 
 export const getClassNoticesByClass = (classId: string) =>
   db.prepare('SELECT * FROM class_notices WHERE classId = ? ORDER BY timestamp DESC').all(classId);
+
+export const createAssignment = (assignment: {
+  id: string; subjectId: string; subjectName: string; professorId: string;
+  title: string; description: string; dueAt: string; createdAt: string;
+}) => {
+  db.prepare(`INSERT INTO assignments (id, subjectId, subjectName, professorId, title, description, dueAt, createdAt)
+    VALUES (@id, @subjectId, @subjectName, @professorId, @title, @description, @dueAt, @createdAt)`
+  ).run(assignment);
+  return assignment;
+};
+
+export const getAssignmentsByProfessor = (professorId: string) =>
+  db.prepare('SELECT * FROM assignments WHERE professorId = ? ORDER BY dueAt ASC').all(professorId);
+
+export const getAssignmentById = (id: string) =>
+  db.prepare('SELECT * FROM assignments WHERE id = ?').get(id) as any;
+
+export const getAssignmentsByStudent = (studentId: string) =>
+  db.prepare(`SELECT a.*, s.completedAt FROM assignments a
+    LEFT JOIN assignment_submissions s ON s.assignmentId = a.id AND s.studentId = ?
+    ORDER BY a.dueAt ASC`).all(studentId);
+
+export const setAssignmentCompleted = (data: { id: string; assignmentId: string; studentId: string; completedAt: string | null }) => {
+  if (data.completedAt) {
+    db.prepare(`INSERT INTO assignment_submissions (id, assignmentId, studentId, completedAt)
+      VALUES (@id, @assignmentId, @studentId, @completedAt)
+      ON CONFLICT(assignmentId, studentId) DO UPDATE SET completedAt = excluded.completedAt`
+    ).run(data);
+  } else {
+    db.prepare('DELETE FROM assignment_submissions WHERE assignmentId = ? AND studentId = ?').run(data.assignmentId, data.studentId);
+  }
+  return db.prepare(`SELECT a.*, s.completedAt FROM assignments a
+    LEFT JOIN assignment_submissions s ON s.assignmentId = a.id AND s.studentId = ?
+    WHERE a.id = ?`).get(data.studentId, data.assignmentId);
+};
 
 export const deleteClassNotice = (id: string) => {
   db.prepare('DELETE FROM class_notices WHERE id = ?').run(id);

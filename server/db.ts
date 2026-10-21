@@ -63,6 +63,39 @@ db.exec(`
     timestamp TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS campus_events (
+    id TEXT PRIMARY KEY,
+    professorId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    location TEXT NOT NULL,
+    startsAt TEXT NOT NULL,
+    endsAt TEXT NOT NULL,
+    entryToken TEXT NOT NULL,
+    exitToken TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS event_attendance (
+    id TEXT PRIMARY KEY,
+    eventId TEXT NOT NULL,
+    studentId TEXT NOT NULL,
+    studentName TEXT NOT NULL,
+    checkedInAt TEXT,
+    checkedOutAt TEXT,
+    UNIQUE(eventId, studentId)
+  );
+
+  CREATE TABLE IF NOT EXISTS event_qr_tokens (
+    token TEXT PRIMARY KEY,
+    eventId TEXT NOT NULL,
+    studentId TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    expiresAt TEXT NOT NULL,
+    usedAt TEXT,
+    createdAt TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS lab_reservations (
     id TEXT PRIMARY KEY,
     labName TEXT NOT NULL,
@@ -102,6 +135,50 @@ db.exec(`
     value REAL NOT NULL,
     period TEXT NOT NULL,
     status TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS subject_assessments (
+    id TEXT PRIMARY KEY,
+    studentId TEXT NOT NULL,
+    studentName TEXT NOT NULL,
+    subjectId TEXT NOT NULL,
+    subjectName TEXT NOT NULL,
+    assessmentType TEXT NOT NULL,
+    period TEXT NOT NULL,
+    value REAL NOT NULL,
+    professorId TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    UNIQUE(studentId, subjectId, assessmentType, period)
+  );
+
+  CREATE TABLE IF NOT EXISTS class_attendance (
+    id TEXT PRIMARY KEY,
+    studentId TEXT NOT NULL,
+    studentName TEXT NOT NULL,
+    subjectId TEXT NOT NULL,
+    date TEXT NOT NULL,
+    status TEXT NOT NULL,
+    professorId TEXT NOT NULL,
+    UNIQUE(studentId, subjectId, date)
+  );
+
+  CREATE TABLE IF NOT EXISTS assignments (
+    id TEXT PRIMARY KEY,
+    subjectId TEXT NOT NULL,
+    subjectName TEXT NOT NULL,
+    professorId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    dueAt TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS assignment_submissions (
+    id TEXT PRIMARY KEY,
+    assignmentId TEXT NOT NULL,
+    studentId TEXT NOT NULL,
+    completedAt TEXT NOT NULL,
+    UNIQUE(assignmentId, studentId)
   );
 `);
 

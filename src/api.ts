@@ -1,8 +1,8 @@
-import type { NewsItem, QueueSector, QueueTicket, Room, User } from './types';
+import type { AssignmentRecord, AttendanceStatus, ClassAttendanceRecord, CourseSubject, NewsItem, QueueSector, QueueTicket, Room, SubjectAssessmentRecord, User } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('campus_token');
   const headers = new Headers(init.headers ?? {});
 
@@ -57,7 +57,15 @@ export const adminApi = {
 };
 
 export const subjectApi = {
-  list: async () => apiFetch<any[]>('/subjects'),
+  list: async () => apiFetch<CourseSubject[]>('/subjects'),
+};
+
+export const assignmentApi = {
+  list: () => apiFetch<AssignmentRecord[]>('/assignments'),
+  create: (data: Pick<AssignmentRecord, 'subjectId' | 'title' | 'description' | 'dueAt'>) =>
+    apiFetch<AssignmentRecord>('/assignments', { method: 'POST', body: JSON.stringify(data) }),
+  setCompleted: (id: string, completed: boolean) =>
+    apiFetch<AssignmentRecord>(`/assignments/${encodeURIComponent(id)}/completion`, { method: 'PUT', body: JSON.stringify({ completed }) }),
 };
 
 export const gradeApi = {
@@ -72,6 +80,17 @@ export const gradeApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+};
+
+export const academicApi = {
+  listStudents: () => apiFetch<User[]>('/attendance/students'),
+  listAssessments: () => apiFetch<SubjectAssessmentRecord[]>('/subject-assessments'),
+  saveAssessment: (data: Pick<SubjectAssessmentRecord, 'studentId' | 'subjectId' | 'assessmentType' | 'period' | 'value'>) =>
+    apiFetch<SubjectAssessmentRecord>('/subject-assessments', { method: 'PUT', body: JSON.stringify(data) }),
+  listClassAttendance: (subjectId: string) => apiFetch<ClassAttendanceRecord[]>(`/attendance/class/${encodeURIComponent(subjectId)}`),
+  saveClassAttendance: (data: { subjectId: string; date: string; records: { studentId: string; status: AttendanceStatus }[] }) =>
+    apiFetch<ClassAttendanceRecord[]>('/attendance/session', { method: 'POST', body: JSON.stringify(data) }),
+  listMyAttendance: () => apiFetch<ClassAttendanceRecord[]>('/attendance/student-history'),
 };
 
 export const newsApi = {

@@ -66,4 +66,52 @@ export interface GradeRecord {
   status: 'Aprovado' | 'Recuperação' | 'Reprovado';
 }
 
-export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard' | 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'student-performance';
+export interface SubjectPerformanceDetails {
+  subjectId: string;
+  n1: number | null;
+  n2: number | null;
+  exam: number | null;
+  assignment: number | null;
+  absences: number;
+  totalClasses: number;
+}
+
+export type AssessmentType = 'N1' | 'N2' | 'Trabalho' | 'Exame';
+export type AttendanceStatus = 'presente' | 'ausente' | 'atraso';
+
+export interface SubjectAssessmentRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  subjectId: string;
+  subjectName: string;
+  assessmentType: AssessmentType;
+  period: GradeRecord['period'];
+  value: number;
+  professorId: string;
+  updatedAt: string;
+}
+
+export interface ClassAttendanceRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  subjectId: string;
+  date: string;
+  status: AttendanceStatus;
+  professorId: string;
+}
+
+export interface AssignmentRecord {
+  id: string;
+  subjectId: string;
+  subjectName: string;
+  professorId: string;
+  title: string;
+  description: string;
+  dueAt: string;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard' | 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'professor-events' | 'professor-assignments' | 'student-events' | 'student-schedule' | 'student-assignments' | 'event-checkin' | 'student-performance';

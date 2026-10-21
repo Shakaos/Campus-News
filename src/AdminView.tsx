@@ -6,9 +6,10 @@ import { NewsItem, Room, User } from './types';
 
 interface AdminViewProps {
   onBack: () => void;
+  isWeb?: boolean;
 }
 
-export function AdminView({ onBack }: AdminViewProps) {
+export function AdminView({ onBack, isWeb = false }: AdminViewProps) {
   const [activeTab, setActiveTab] = useState<'news' | 'rooms' | 'professors'>('news');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -17,7 +18,7 @@ export function AdminView({ onBack }: AdminViewProps) {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
-      className="p-6 space-y-6 pb-32"
+      className={isWeb ? 'web-admin space-y-4 px-1 py-2 md:px-2' : 'space-y-6 p-6 pb-32'}
     >
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -25,13 +26,13 @@ export function AdminView({ onBack }: AdminViewProps) {
           <ArrowLeft size={24} className="text-slate-600" />
         </button>
         <div>
-          <h1 className="text-3xl font-black text-slate-900">Administração</h1>
+          <h1 className={`${isWeb ? 'text-2xl' : 'text-3xl'} font-black text-slate-900`}>Administração</h1>
           <p className="text-sm text-slate-500">Gerenciar notícias e salas</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-slate-200">
+      <div className="flex gap-2 overflow-x-auto border-b border-slate-200 md:gap-4">
         <button
           onClick={() => setActiveTab('news')}
           className={`px-4 py-3 font-bold border-b-2 transition-colors ${
@@ -65,14 +66,14 @@ export function AdminView({ onBack }: AdminViewProps) {
       </div>
 
       {/* Content */}
-      {activeTab === 'news' && <NewsManager />}
-      {activeTab === 'rooms' && <RoomsManager />}
-      {activeTab === 'professors' && <ProfessorManager />}
+      {activeTab === 'news' && <NewsManager isWeb={isWeb} />}
+      {activeTab === 'rooms' && <RoomsManager isWeb={isWeb} />}
+      {activeTab === 'professors' && <ProfessorManager isWeb={isWeb} />}
     </motion.div>
   );
 }
 
-function ProfessorManager() {
+function ProfessorManager({ isWeb = false }: { isWeb?: boolean }) {
   const [professors, setProfessors] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -152,9 +153,9 @@ function ProfessorManager() {
       ) : professors.length === 0 ? (
         <div className="text-center py-8 text-slate-500">Nenhum professor cadastrado.</div>
       ) : (
-        <div className="space-y-3">
+        <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
           {professors.map((professor) => (
-            <div key={professor.id} className="p-4 bg-white rounded-lg border border-slate-200">
+            <div key={professor.id} className={`rounded-lg border border-slate-200 bg-white ${isWeb ? 'p-3' : 'p-4'}`}>
               <p className="font-bold text-slate-900">{professor.name}</p>
               <p className="text-sm text-slate-500">{professor.email}</p>
             </div>
@@ -165,7 +166,7 @@ function ProfessorManager() {
   );
 }
 
-function NewsManager() {
+function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -377,14 +378,14 @@ function NewsManager() {
         </form>
       )}
 
-      <div className="space-y-3">
+      <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
         {isLoading && !showForm ? (
           <div className="text-center py-8 text-slate-500">Carregando...</div>
         ) : news.length === 0 ? (
           <div className="text-center py-8 text-slate-500">Nenhuma notícia</div>
         ) : (
           news.map((item) => (
-            <div key={item.id} className="p-4 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-shadow">
+            <div key={item.id} className={`rounded-lg border border-slate-200 bg-white transition-shadow hover:shadow-md ${isWeb ? 'p-3' : 'p-4'}`}>
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
                   <h3 className="font-bold text-slate-900">{item.title}</h3>
@@ -419,7 +420,7 @@ function NewsManager() {
   );
 }
 
-function RoomsManager() {
+function RoomsManager({ isWeb = false }: { isWeb?: boolean }) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -655,14 +656,14 @@ function RoomsManager() {
         </form>
       )}
 
-      <div className="space-y-3">
+      <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
         {isLoading && !showForm ? (
           <div className="text-center py-8 text-slate-500">Carregando...</div>
         ) : rooms.length === 0 ? (
           <div className="text-center py-8 text-slate-500">Nenhuma sala</div>
         ) : (
           rooms.map((item) => (
-            <div key={item.id} className="p-4 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-shadow">
+            <div key={item.id} className={`rounded-lg border border-slate-200 bg-white transition-shadow hover:shadow-md ${isWeb ? 'p-3' : 'p-4'}`}>
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
                   <h3 className="font-bold text-slate-900">{item.name}</h3>
