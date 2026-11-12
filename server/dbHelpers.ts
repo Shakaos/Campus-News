@@ -338,9 +338,88 @@ export const getAssignmentById = (id: string) =>
   db.prepare('SELECT * FROM assignments WHERE id = ?').get(id) as any;
 
 export const getAssignmentsByStudent = (studentId: string) =>
-  db.prepare(`SELECT a.*, s.completedAt FROM assignments a
+  db.prepare(`SELECT a.*, s.completedAt, f.id AS fileId, f.fileName, f.fileSize, f.mimeType, f.uploadedAt AS fileUploadedAt
+    FROM assignments a
     LEFT JOIN assignment_submissions s ON s.assignmentId = a.id AND s.studentId = ?
-    ORDER BY a.dueAt ASC`).all(studentId);
+    LEFT JOIN assignment_submission_files f ON f.assignmentId = a.id AND f.studentId = ?
+    ORDER BY a.dueAt ASC, f.uploadedAt ASC`).all(studentId, studentId)
+    .reduce((assignments: any[], row: any) => {
+      let assignment = assignments.find(item => item.id === row.id);
+      if (!assignment) {
+        assignment = { ...row, submissionFiles: [] };
+        delete assignment.fileId;
+        delete assignment.fileName;
+        delete assignment.fileSize;
+        delete assignment.mimeType;
+        delete assignment.fileUploadedAt;
+        assignments.push(assignment);
+      }
+      if (row.fileId) {
+        assignment.submissionFiles.push({
+          id: row.fileId,
+          fileName: row.fileName,
+          fileSize: row.fileSize,
+          mimeType: row.mimeType,
+          uploadedAt: row.fileUploadedAt,
+        });
+      }
+      return assignments;
+    }, []);
+
+export const createAssignmentSubmissionFiles = (files: {
+  id: string; assignmentId: string; studentId: string; fileName: string;
+  storagePath: string; mimeType: string; fileSize: number; uploadedAt: string;
+}[], completion: { id: string; assignmentId: string; studentId: string; completedAt: string }) => {
+  const insert = db.prepare(`INSERT INTO assignment_submission_files
+    (id, assignmentId, studentId, fileName, storagePath, mimeType, fileSize, uploadedAt)
+    VALUES (@id, @assignmentId, @studentId, @fileName, @storagePath, @mimeType, @fileSize, @uploadedAt)`);
+  const saveSubmission = db.transaction((items: typeof files) => {
+    items.forEach(file => insert.run(file));
+    db.prepare(`INSERT INTO assignment_submissions (id, assignmentId, studentId, completedAt)
+      VALUES (@id, @assignmentId, @studentId, @completedAt)
+      ON CONFLICT(assignmentId, studentId) DO UPDATE SET completedAt = excluded.completedAt`
+    ).run(completion);
+  });
+  saveSubmission(files);
+  return files.map(({ id, fileName, fileSize, mimeType, uploadedAt }) => ({ id, fileName, fileSize, mimeType, uploadedAt }));
+};
+
+export const getAssignmentSubmissionFilesForProfessor = (professorId: string) =>
+  db.prepare(`SELECT a.id AS assignmentId, a.title AS assignmentTitle, a.subjectName, f.studentId,
+      u.name AS studentName, f.id AS fileId, f.fileName, f.fileSize, f.mimeType, f.uploadedAt
+    FROM assignment_submission_files f
+    JOIN assignments a ON a.id = f.assignmentId
+    JOIN users u ON u.id = f.studentId
+    WHERE a.professorId = ?
+    ORDER BY f.uploadedAt DESC`).all(professorId)
+    .reduce((submissions: any[], row: any) => {
+      let submission = submissions.find(item => item.assignmentId === row.assignmentId && item.studentId === row.studentId);
+      if (!submission) {
+        submission = {
+          id: `${row.assignmentId}:${row.studentId}`,
+          assignmentId: row.assignmentId,
+          assignmentTitle: row.assignmentTitle,
+          subjectName: row.subjectName,
+          studentId: row.studentId,
+          studentName: row.studentName,
+          uploadedAt: row.uploadedAt,
+          files: [],
+        };
+        submissions.push(submission);
+      }
+      submission.uploadedAt = submission.uploadedAt > row.uploadedAt ? submission.uploadedAt : row.uploadedAt;
+      submission.files.push({
+        id: row.fileId,
+        fileName: row.fileName,
+        fileSize: row.fileSize,
+        mimeType: row.mimeType,
+        uploadedAt: row.uploadedAt,
+      });
+      return submissions;
+    }, []);
+
+export const getAssignmentSubmissionFile = (id: string) =>
+  db.prepare('SELECT * FROM assignment_submission_files WHERE id = ?').get(id) as any;
 
 export const setAssignmentCompleted = (data: { id: string; assignmentId: string; studentId: string; completedAt: string | null }) => {
   if (data.completedAt) {
@@ -351,9 +430,7 @@ export const setAssignmentCompleted = (data: { id: string; assignmentId: string;
   } else {
     db.prepare('DELETE FROM assignment_submissions WHERE assignmentId = ? AND studentId = ?').run(data.assignmentId, data.studentId);
   }
-  return db.prepare(`SELECT a.*, s.completedAt FROM assignments a
-    LEFT JOIN assignment_submissions s ON s.assignmentId = a.id AND s.studentId = ?
-    WHERE a.id = ?`).get(data.studentId, data.assignmentId);
+  return getAssignmentsByStudent(data.studentId).find((assignment: any) => assignment.id === data.assignmentId);
 };
 
 export const deleteClassNotice = (id: string) => {

@@ -1,5 +1,7 @@
 # 🚀 Deploy Grátis: Vercel + Replit + Supabase
 
+> **Guia legado:** para o teste atual, use o fluxo Render + APK documentado no [README.md](./README.md). O backend desta versão usa SQLite; `DATABASE_URL` não ativa PostgreSQL neste código. No plano gratuito do Render, os dados são temporários.
+
 ## 📋 Overview
 
 ```

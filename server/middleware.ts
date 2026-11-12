@@ -11,6 +11,13 @@ export class ApiError extends Error {
 export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[Error]', err);
 
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ message: 'Cada arquivo pode ter no máximo 10 MB.' });
+  }
+  if (err?.code === 'LIMIT_FILE_COUNT' || err?.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ message: 'Envie no máximo 5 arquivos por trabalho.' });
+  }
+
   if (err instanceof z.ZodError) {
     return res.status(400).json({
       message: 'Validação falhou',

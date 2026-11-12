@@ -1,11 +1,15 @@
 import cors from 'cors';
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import dotenv from 'dotenv';
 import express, { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import { createClient } from '@supabase/supabase-js';
 
 import { db } from './db.js';
-import { errorHandler, asyncHandler } from './middleware.js';
+import { ApiError, errorHandler, asyncHandler } from './middleware.js';
 import { LoginSchema, RegisterSchema, CreateProfessorSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema, CampusEventSchema, EventCheckInSchema, EventQrTokenSchema, SubjectAssessmentSchema, ClassAttendanceSchema, AssignmentSchema, AssignmentCompletionSchema } from './schemas.js';
 import {
   addQueueTicket,
@@ -26,6 +30,9 @@ import {
   getAssignmentsByStudent,
   getAssignmentById,
   setAssignmentCompleted,
+  createAssignmentSubmissionFiles,
+  getAssignmentSubmissionFilesForProfessor,
+  getAssignmentSubmissionFile,
   getLabReservationsByProfessor,
   getNews,
   getQueueSectors,
@@ -61,7 +68,18 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4001);
-const JWT_SECRET = process.env.JWT_SECRET ?? 'campus-news-dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET ?? (
+  process.env.NODE_ENV === 'production' ? '' : 'campus-news-dev-secret'
+);
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in production.');
+}
+const MAX_ASSIGNMENT_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_ASSIGNMENT_FILES = 5;
+const assignmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ASSIGNMENT_FILE_SIZE, files: MAX_ASSIGNMENT_FILES },
+});
 
 app.use(cors());
 app.use(express.json());
@@ -679,6 +697,123 @@ app.put('/api/assignments/:id/completion', authMiddleware, asyncHandler(async (r
   });
   return res.json(updated);
 }));
+
+const getAssignmentStorage = () => {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new ApiError(503, 'O armazenamento de arquivos ainda não foi configurado no servidor.');
+  }
+  return createClient(supabaseUrl, serviceRoleKey).storage.from(process.env.SUPABASE_ASSIGNMENTS_BUCKET || 'assignment-submissions');
+};
+
+const allowedAssignmentFileTypes: Record<string, string[]> = {
+  '.pdf': ['application/pdf'],
+  '.doc': ['application/msword'],
+  '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  '.xls': ['application/vnd.ms-excel'],
+  '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  '.png': ['image/png'],
+  '.jpg': ['image/jpeg'],
+  '.jpeg': ['image/jpeg'],
+  '.gif': ['image/gif'],
+  '.webp': ['image/webp'],
+};
+
+app.get('/api/assignments/submissions', authMiddleware, professorMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  return res.json(getAssignmentSubmissionFilesForProfessor(user.id));
+});
+
+app.post('/api/assignments/:id/submissions', authMiddleware, (req: Request, res: Response, next: NextFunction) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role !== 'aluno') return res.status(403).json({ message: 'Somente alunos podem enviar arquivos.' });
+  return assignmentUpload.array('files', MAX_ASSIGNMENT_FILES)(req, res, next);
+}, asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  const assignment = getAssignmentById(req.params.id);
+  if (!assignment) throw new ApiError(404, 'Trabalho não encontrado.');
+
+  const files = req.files as Express.Multer.File[] | undefined;
+  if (!files?.length) throw new ApiError(400, 'Selecione ao menos um arquivo para enviar.');
+  for (const file of files) {
+    const extension = file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase();
+    const acceptedMimeTypes = allowedAssignmentFileTypes[extension];
+    if (!acceptedMimeTypes || (file.mimetype !== 'application/octet-stream' && !acceptedMimeTypes.includes(file.mimetype))) {
+      throw new ApiError(400, 'Formato não aceito. Envie PDF, DOC/DOCX, XLS/XLSX ou uma imagem.');
+    }
+    if (!file.size) throw new ApiError(400, 'Não é possível enviar arquivos vazios.');
+  }
+
+  const bucket = getAssignmentStorage();
+  const uploadedPaths: string[] = [];
+  const uploadedAt = new Date().toISOString();
+  const fileRecords = files.map(file => {
+    const id = generateId();
+    const extension = file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase();
+    return {
+      id,
+      assignmentId: assignment.id,
+      studentId: user.id,
+      fileName: file.originalname,
+      storagePath: `${assignment.id}/${user.id}/${id}${extension}`,
+      mimeType: file.mimetype || 'application/octet-stream',
+      fileSize: file.size,
+      uploadedAt,
+      buffer: file.buffer,
+    };
+  });
+
+  try {
+    for (const file of fileRecords) {
+      const { error } = await bucket.upload(file.storagePath, file.buffer, {
+        contentType: file.mimeType,
+        upsert: false,
+      });
+      if (error) throw new ApiError(502, `Não foi possível salvar o arquivo ${file.fileName}: ${error.message}`);
+      uploadedPaths.push(file.storagePath);
+    }
+
+    const savedFiles = createAssignmentSubmissionFiles(
+      fileRecords.map(({ buffer: _buffer, ...record }) => record),
+      { id: generateId(), assignmentId: assignment.id, studentId: user.id, completedAt: uploadedAt },
+    );
+    return res.status(201).json(savedFiles);
+  } catch (error) {
+    if (uploadedPaths.length) {
+      const { error: cleanupError } = await bucket.remove(uploadedPaths);
+      if (cleanupError) {
+        console.error('[Assignment upload cleanup]', cleanupError);
+        throw new ApiError(500, 'O envio falhou e alguns arquivos temporários não puderam ser removidos. Contate o suporte.');
+      }
+    }
+    throw error;
+  }
+}));
+
+app.get('/api/assignments/:id/submissions/:fileId/download', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  const file = getAssignmentSubmissionFile(req.params.fileId);
+  if (!file || file.assignmentId !== req.params.id) throw new ApiError(404, 'Arquivo não encontrado.');
+  const assignment = getAssignmentById(req.params.id);
+  const canDownload = user.role === 'aluno'
+    ? file.studentId === user.id
+    : user.role === 'professor' && assignment?.professorId === user.id;
+  if (!canDownload) throw new ApiError(403, 'Você não tem permissão para acessar este arquivo.');
+
+  const { data, error } = await getAssignmentStorage().createSignedUrl(file.storagePath, 60);
+  if (error) throw new ApiError(502, `Não foi possível abrir o arquivo: ${error.message}`);
+  return res.json({ url: data.signedUrl });
+}));
+
+const webDirectory = resolve(process.cwd(), 'dist');
+if (existsSync(webDirectory)) {
+  app.use(express.static(webDirectory));
+  app.get('*', (req, res, next) => {
+    if (req.path === '/api' || req.path.startsWith('/api/')) return next();
+    return res.sendFile(resolve(webDirectory, 'index.html'), next);
+  });
+}
 
 // 404 handler
 app.use((req, res) => {

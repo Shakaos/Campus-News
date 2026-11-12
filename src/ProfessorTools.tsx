@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Users, Calendar, Newspaper, TrendingUp, Plus, Trash2, Check, Clock, X } from 'lucide-react';
 import { academicApi } from './api';
+import { formatDate, getLocalDateInputValue } from './date';
 import type { AttendanceStatus, ClassAttendanceRecord, CourseSubject, User } from './types';
 
 interface LabReservation {
@@ -32,7 +33,7 @@ export function AttendanceList({ onBack, subjects, isWeb = false }: { onBack: ()
   const [students, setStudents] = useState<User[]>([]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(getLocalDateInputValue());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -271,7 +272,7 @@ export function LabReservation({ onBack }: { onBack: () => void }) {
                     <p className="font-bold text-slate-900">{reservation.labName}</p>
                     <p className="text-sm text-slate-600">{reservation.purpose}</p>
                     <p className="text-sm text-slate-500 mt-2">
-                      {new Date(reservation.date).toLocaleDateString('pt-BR')} - {reservation.startTime} às {reservation.endTime}
+                      {formatDate(reservation.date)} - {reservation.startTime} às {reservation.endTime}
                     </p>
                   </div>
                   <button
@@ -305,7 +306,7 @@ export function ClassNotices({ onBack }: { onBack: () => void }) {
         id: Date.now().toString(),
         title: formData.title,
         content: formData.content,
-        date: new Date().toISOString().split('T')[0]
+        date: getLocalDateInputValue()
       }]);
       setFormData({ title: '', content: '' });
       setShowForm(false);
@@ -386,7 +387,7 @@ export function ClassNotices({ onBack }: { onBack: () => void }) {
                 <div className="flex-1">
                   <p className="font-bold text-slate-900">{notice.title}</p>
                   <p className="text-sm text-slate-600 mt-2">{notice.content}</p>
-                  <p className="text-xs text-slate-400 mt-2">{new Date(notice.date).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-xs text-slate-400 mt-2">{formatDate(notice.date)}</p>
                 </div>
                 <button
                   onClick={() => deleteNotice(notice.id)}
@@ -444,7 +445,7 @@ export function Reports({ onBack }: { onBack: () => void }) {
               <div className="flex-1">
                 <p className="font-bold text-slate-900">{report.title}</p>
                 <p className="text-sm text-slate-600">Tipo: {report.type}</p>
-                <p className="text-xs text-slate-400 mt-2">Gerado em: {new Date(report.generatedAt).toLocaleDateString('pt-BR')}</p>
+                <p className="text-xs text-slate-400 mt-2">Gerado em: {formatDate(report.generatedAt)}</p>
                 <div className="mt-4 bg-slate-50 p-3 rounded-lg text-sm">
                   {Object.entries(report.data).map(([key, value]) => (
                     <div key={key} className="flex justify-between">

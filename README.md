@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Abra `http://localhost:3000`.
+Abra `http://localhost:4173`.
 
 ### Web (PWA)
 
@@ -24,15 +24,47 @@ npm run build
 npm run preview
 ```
 
+### Arquivos enviados nos trabalhos
+
+Os anexos dos alunos são armazenados em um bucket privado do Supabase Storage. Crie um bucket chamado `assignment-submissions` (ou defina `SUPABASE_ASSIGNMENTS_BUCKET`) e configure estas variáveis somente no ambiente do servidor:
+
+```text
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_ASSIGNMENTS_BUCKET=assignment-submissions
+```
+
+Não coloque `SUPABASE_SERVICE_ROLE_KEY` em variáveis `VITE_*` nem no código do navegador. O servidor cria a tabela de metadados dos anexos ao iniciar; os arquivos ficam no bucket privado e são acessados por links temporários autenticados.
+
 ### Android
 
-Precisa do [Android Studio](https://developer.android.com/studio). Depois:
+#### Publicar a versão web/API no Render
+
+1. Envie as alterações para a branch `main` do GitHub.
+2. No Render, crie um **Blueprint** a partir do repositório e confirme o serviço definido em `render.yaml`.
+3. Aguarde o deploy e teste `https://SEU-SERVICO.onrender.com/api/health`.
+4. Copie a URL pública do serviço; ela será usada ao gerar o APK.
+
+O plano gratuito do Render pode suspender o serviço quando estiver ocioso e o banco SQLite de demonstração não é persistente: dados de teste podem ser apagados quando a instância reiniciar ou for implantada novamente. Não use dados reais de alunos.
+
+Para habilitar o envio de anexos de trabalhos, configure no serviço Render `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `SUPABASE_ASSIGNMENTS_BUCKET=assignment-submissions`. O bucket `assignment-submissions` deve existir como privado no Supabase. Nunca exponha a chave `SUPABASE_SERVICE_ROLE_KEY` no app.
+
+#### Gerar e disponibilizar o APK Android
+
+Após o serviço Render estar online:
+
+1. Abra **Actions → Android APK → Run workflow** no GitHub.
+2. Informe a URL da API terminando em `/api` e uma nova tag de release, por exemplo `demo-2026-11-09`.
+3. O workflow compila e publica o APK em **Releases**. Envie ao professor o link do arquivo `app-debug.apk`.
+4. No Android, baixe e instale o APK. O Android pode pedir autorização para instalar apps baixados pelo navegador.
+
+O APK de demonstração é assinado para debug e distribuído fora da Play Store; não é uma publicação para produção. A versão web/PWA também pode ser aberta no Chrome Android e instalada pelo menu do navegador.
 
 ```powershell
 npm run mobile:android
 ```
 
-Isso gera o `dist`, sincroniza o Capacitor e abre o projeto nativo.
+Isso gera o `dist`, sincroniza o Capacitor e abre o projeto nativo local. Para compilar localmente, instale o [Android Studio](https://developer.android.com/studio) e o Android SDK.
 
 ### iOS
 

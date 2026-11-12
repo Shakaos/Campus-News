@@ -1,4 +1,4 @@
-import type { AssignmentRecord, AttendanceStatus, ClassAttendanceRecord, CourseSubject, NewsItem, QueueSector, QueueTicket, Room, SubjectAssessmentRecord, User } from './types';
+import type { AssignmentRecord, AssignmentSubmissionFile, AssignmentSubmissionNotice, AttendanceStatus, ClassAttendanceRecord, CourseSubject, NewsItem, QueueSector, QueueTicket, Room, SubjectAssessmentRecord, User } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -66,6 +66,17 @@ export const assignmentApi = {
     apiFetch<AssignmentRecord>('/assignments', { method: 'POST', body: JSON.stringify(data) }),
   setCompleted: (id: string, completed: boolean) =>
     apiFetch<AssignmentRecord>(`/assignments/${encodeURIComponent(id)}/completion`, { method: 'PUT', body: JSON.stringify({ completed }) }),
+  uploadSubmission: (id: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    return apiFetch<AssignmentSubmissionFile[]>(`/assignments/${encodeURIComponent(id)}/submissions`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  listSubmissions: () => apiFetch<AssignmentSubmissionNotice[]>('/assignments/submissions'),
+  getSubmissionFileUrl: (assignmentId: string, fileId: string) =>
+    apiFetch<{ url: string }>(`/assignments/${encodeURIComponent(assignmentId)}/submissions/${encodeURIComponent(fileId)}/download`),
 };
 
 export const gradeApi = {

@@ -1,0 +1,70 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Public HTTPS API base URL (for example https://campus-news.onrender.com/api)
+        required: true
+        type: string
+      release_tag:
+        description: New release tag (for example demo-2026-11-09)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate API URL
+        run: |
+          node --input-type=module -e '
+            import { appendFileSync } from "node:fs";
+            const apiUrl = new URL(process.env.API_URL);
+            const apiPath = apiUrl.pathname.replace(/\/+$/, "");
+            if (apiUrl.protocol !== "https:" || !apiPath.endsWith("/api")) {
+              throw new Error("Provide an HTTPS API URL ending in /api.");
+            }
+            apiUrl.pathname = apiPath.slice(0, -4) || "/";
+            const publicUrl = `${apiUrl.origin}${apiUrl.pathname.replace(/\/$/, "")}`;
+            appendFileSync(process.env.GITHUB_ENV, `VITE_PUBLIC_APP_URL=${publicUrl}\n`);
+          '
+        env:
+          API_URL: ${{ inputs.api_url }}
+
+      - name: Build web assets for Android
+        run: npm run mobile:sync
+        env:
+          VITE_API_URL: ${{ inputs.api_url }}
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+        working-directory: android
+
+      - name: Publish APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            android/app/build/outputs/apk/debug/app-debug.apk \
+            --title "Campus News $RELEASE_TAG" \
+            --notes "APK Android de demonstração para teste. Instale apenas se confiar nesta versão."

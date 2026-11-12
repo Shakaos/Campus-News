@@ -159,6 +159,17 @@ export async function initializeDatabase() {
         UNIQUE(assignmentId, studentId)
       );
 
+      CREATE TABLE IF NOT EXISTS assignment_submission_files (
+        id TEXT PRIMARY KEY,
+        assignmentId TEXT NOT NULL,
+        studentId TEXT NOT NULL,
+        fileName TEXT NOT NULL,
+        storagePath TEXT NOT NULL UNIQUE,
+        mimeType TEXT NOT NULL,
+        fileSize BIGINT NOT NULL,
+        uploadedAt TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS lab_reservations (
         id TEXT PRIMARY KEY,
         labName TEXT NOT NULL,

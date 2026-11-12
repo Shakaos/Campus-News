@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Activity, BookOpen, CalendarDays, ClipboardList, GraduationCap, LayoutDashboard, LogOut, Menu, Moon, Newspaper, QrCode, Search, Shield, Sun, Users, X } from 'lucide-react';
-import type { AppView, User } from './types';
+import { Activity, Bell, BookOpen, CalendarDays, ClipboardList, GraduationCap, LayoutDashboard, LogOut, Menu, Moon, Newspaper, QrCode, Search, Shield, Sun, Users, X } from 'lucide-react';
+import { assignmentApi } from './api';
+import type { AppView, AssignmentRecord, AssignmentSubmissionNotice, User } from './types';
 
 interface WebLayoutProps {
   user: User;
@@ -13,8 +14,43 @@ interface WebLayoutProps {
   children: ReactNode;
 }
 
+function studentAssignmentNotifications(assignments: AssignmentRecord[]) {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  return assignments.flatMap(assignment => {
+    if (assignment.completedAt) return [];
+    const due = new Date(assignment.dueAt);
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+    const daysUntilDue = Math.round((dueDay - todayStart) / 86400000);
+    const isNew = Date.now() - new Date(assignment.createdAt).getTime() <= 7 * 86400000;
+    const notifications: { id: string; title: string; description: string }[] = [];
+
+    if (isNew) {
+      notifications.push({
+        id: `assignment:new:${assignment.id}`,
+        title: `Novo trabalho: ${assignment.title}`,
+        description: assignment.subjectName,
+      });
+    }
+    if (daysUntilDue === 0 || daysUntilDue === 1) {
+      notifications.push({
+        id: `assignment:due:${assignment.id}`,
+        title: `Prazo ${daysUntilDue === 0 ? 'hoje' : 'amanhã'}: ${assignment.title}`,
+        description: assignment.subjectName,
+      });
+    }
+
+    return notifications;
+  });
+}
+
 export function WebLayout({ user, view, theme, onNavigate, onToggleTheme, onLogout, children }: WebLayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<{ id: string; title: string; description: string }[]>([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
+  const readStorageKey = `campus_notifications_read:${user.id}`;
   const links: { label: string; view: AppView; icon: ReactNode }[] = [
     { label: 'Visão geral', view: 'home', icon: <LayoutDashboard size={18} /> },
     { label: 'Notícias', view: 'campus-news', icon: <Newspaper size={18} /> },
@@ -41,6 +77,64 @@ export function WebLayout({ user, view, theme, onNavigate, onToggleTheme, onLogo
     setIsMobileMenuOpen(false);
   };
 
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(readStorageKey);
+      const parsed: unknown = stored ? JSON.parse(stored) : [];
+      setReadNotificationIds(Array.isArray(parsed) && parsed.every(id => typeof id === 'string') ? parsed : []);
+    } catch (error) {
+      setNotificationError(error instanceof Error ? error.message : 'Não foi possível carregar o estado das notificações.');
+    }
+  }, [readStorageKey]);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadNotifications = async () => {
+      try {
+        const nextNotifications = user.role === 'professor'
+          ? (await assignmentApi.listSubmissions()).map((submission: AssignmentSubmissionNotice) => ({
+              id: `submission:${submission.id}:${submission.uploadedAt}`,
+              title: `Trabalho enviado: ${submission.assignmentTitle}`,
+              description: `${submission.studentName} · ${submission.subjectName} · ${submission.files.length} arquivo(s)`,
+            }))
+          : user.role === 'aluno'
+            ? studentAssignmentNotifications(await assignmentApi.list())
+            : [];
+        if (isActive) {
+          setNotifications(nextNotifications);
+          setNotificationError('');
+        }
+      } catch (error) {
+        if (isActive) setNotificationError(error instanceof Error ? error.message : 'Não foi possível carregar as notificações.');
+      }
+    };
+
+    if (user.role !== 'admin') {
+      void loadNotifications();
+      const interval = window.setInterval(() => { void loadNotifications(); }, 60_000);
+      return () => {
+        isActive = false;
+        window.clearInterval(interval);
+      };
+    }
+    return () => { isActive = false; };
+  }, [user.id, user.role]);
+
+  const unreadNotifications = notifications.filter(notification => !readNotificationIds.includes(notification.id));
+  const openNotifications = () => {
+    const nextOpen = !isNotificationsOpen;
+    setIsNotificationsOpen(nextOpen);
+    if (nextOpen) {
+      const nextReadIds = [...new Set([...readNotificationIds, ...notifications.map(notification => notification.id)])];
+      setReadNotificationIds(nextReadIds);
+      try {
+        localStorage.setItem(readStorageKey, JSON.stringify(nextReadIds));
+      } catch (error) {
+        setNotificationError(error instanceof Error ? error.message : 'Não foi possível salvar o estado das notificações.');
+      }
+    }
+  };
+
   const navItems = (mobile = false) => links.map(link => {
     const active = view === link.view
       || (link.view === 'professor-dashboard' && view.startsWith('professor-'))
@@ -51,7 +145,7 @@ export function WebLayout({ user, view, theme, onNavigate, onToggleTheme, onLogo
         key={link.view}
         type="button"
         onClick={() => navigate(link.view)}
-        className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-semibold transition-colors ${active ? 'bg-emerald-800 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'} ${mobile ? 'py-3' : 'py-2.5'}`}
+        className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-semibold transition-colors ${active ? 'bg-blue-50 text-blue-700 dark:bg-slate-800 dark:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'} ${mobile ? 'py-3' : 'py-2.5'}`}
       >
         {link.icon}<span>{link.label}</span>
       </button>
@@ -62,7 +156,7 @@ export function WebLayout({ user, view, theme, onNavigate, onToggleTheme, onLogo
     <div className="min-h-screen bg-[#f4f6f3] text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-900 lg:flex">
         <button type="button" onClick={() => navigate('home')} className="mb-8 flex items-center gap-3 px-2 text-left">
-          <span className="grid size-10 place-items-center rounded-md bg-emerald-800 text-sm font-black text-white">C</span>
+          <span className="grid size-10 place-items-center rounded-md bg-blue-700 text-sm font-black text-white">C</span>
           <span><span className="block text-base font-bold leading-tight">Campus</span><span className="block text-xs text-slate-500">Portal acadêmico</span></span>
         </button>
         <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Menu</p>
@@ -82,6 +176,17 @@ export function WebLayout({ user, view, theme, onNavigate, onToggleTheme, onLogo
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <span className="hidden text-right sm:block"><span className="block max-w-48 truncate text-sm font-semibold">{user.name}</span><span className="block text-xs capitalize text-slate-500">{user.role}</span></span>
+            {user.role !== 'admin' && <div className="relative">
+              <button type="button" onClick={openNotifications} aria-label={`Notificações${unreadNotifications.length ? `, ${unreadNotifications.length} não lidas` : ''}`} aria-expanded={isNotificationsOpen} className="relative grid size-10 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
+                <Bell size={19} />
+                {unreadNotifications.length > 0 && <span className="absolute right-1 top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{unreadNotifications.length > 9 ? '9+' : unreadNotifications.length}</span>}
+              </button>
+              {isNotificationsOpen && <div className="absolute right-0 top-12 z-50 w-[min(21rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex items-center justify-between"><h2 className="font-bold">Notificações</h2><button type="button" aria-label="Fechar notificações" onClick={() => setIsNotificationsOpen(false)} className="grid size-8 place-items-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"><X size={16} /></button></div>
+                {notificationError && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{notificationError}</p>}
+                {notifications.length === 0 ? <p className="py-5 text-sm text-slate-500">Você não tem notificações.</p> : <ul className="mt-2 max-h-80 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">{notifications.map(notification => <li key={notification.id} className="py-3"><p className="text-sm font-semibold">{notification.title}</p><p className="mt-1 text-xs text-slate-500">{notification.description}</p></li>)}</ul>}
+              </div>}
+            </div>}
             <button type="button" onClick={onToggleTheme} aria-label="Alternar tema" title="Alternar tema" className="grid size-10 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">{theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button type="button" onClick={onLogout} aria-label="Sair da conta" title="Sair da conta" className="hidden size-10 place-items-center rounded-md text-slate-600 hover:bg-red-50 hover:text-red-700 sm:grid dark:text-slate-200"><LogOut size={19} /></button>
           </div>

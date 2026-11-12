@@ -112,6 +112,26 @@ export interface AssignmentRecord {
   dueAt: string;
   createdAt: string;
   completedAt?: string | null;
+  submissionFiles?: AssignmentSubmissionFile[];
+}
+
+export interface AssignmentSubmissionFile {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: string;
+}
+
+export interface AssignmentSubmissionNotice {
+  id: string;
+  assignmentId: string;
+  assignmentTitle: string;
+  subjectName: string;
+  studentId: string;
+  studentName: string;
+  uploadedAt: string;
+  files: AssignmentSubmissionFile[];
 }
 
 export type AppView = 'login' | 'home' | 'campus-news' | 'noticia' | 'salas' | 'filas' | 'acompanhamento' | 'admin' | 'professor-dashboard' | 'professor-attendance' | 'professor-lab' | 'professor-notices' | 'professor-reports' | 'professor-grades' | 'professor-events' | 'professor-assignments' | 'student-events' | 'student-schedule' | 'student-assignments' | 'event-checkin' | 'student-performance';

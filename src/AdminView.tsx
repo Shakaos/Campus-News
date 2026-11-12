@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Plus, Edit2, Trash2, X, Check, UserPlus } from 'lucide-react';
 import { adminApi, newsApi, roomApi } from './api';
+import { getLocalDateInputValue } from './date';
 import { NewsItem, Room, User } from './types';
 
 interface AdminViewProps {
@@ -176,7 +177,7 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
     category: '',
     summary: '',
     content: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateInputValue(),
     imageUrl: '',
   });
 
@@ -215,7 +216,7 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
         category: '',
         summary: '',
         content: '',
-        date: new Date().toISOString().split('T')[0],
+        date: getLocalDateInputValue(),
         imageUrl: '',
       });
     } catch (error) {
@@ -266,7 +267,7 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
               category: '',
               summary: '',
               content: '',
-              date: new Date().toISOString().split('T')[0],
+              date: getLocalDateInputValue(),
               imageUrl: '',
             });
           }

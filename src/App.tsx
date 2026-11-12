@@ -39,6 +39,7 @@ import { AdminView } from './AdminView';
 import { AttendanceList, LabReservation, ClassNotices, Reports } from './ProfessorTools';
 import { EventCheckin, ProfessorEvents, StudentEventScanner } from './EventTools';
 import { ProfessorAssignments, StudentAssignments, StudentSchedule } from './AssignmentTools';
+import { formatDate } from './date';
 import { WebLayout } from './WebLayout';
 import { ErrorBoundary, ErrorAlert } from './ErrorBoundary';
 import { useError } from './hooks';
@@ -249,7 +250,7 @@ export default function App() {
       {view === 'professor-events' && <ProfessorEvents onBack={() => navigate('professor-dashboard')} />}
       {view === 'professor-assignments' && <ProfessorAssignments onBack={() => navigate('professor-dashboard')} subjects={subjects} isWeb={!isNativeApp} />}
       {view === 'student-schedule' && <StudentSchedule onBack={() => navigate('home')} subjects={subjects} isWeb={!isNativeApp} />}
-      {view === 'student-assignments' && <StudentAssignments onBack={() => navigate('home')} assignments={assignments} onToggleCompletion={async (id, completed) => { const updated = await assignmentApi.setCompleted(id, completed); setAssignments(previous => previous.map(item => item.id === id ? updated : item)); }} isWeb={!isNativeApp} />}
+      {view === 'student-assignments' && <StudentAssignments onBack={() => navigate('home')} assignments={assignments} onToggleCompletion={async (id, completed) => { const updated = await assignmentApi.setCompleted(id, completed); setAssignments(previous => previous.map(item => item.id === id ? updated : item)); }} onUploadFiles={async (id, files) => { const uploaded = await assignmentApi.uploadSubmission(id, files); setAssignments(previous => previous.map(item => item.id === id ? { ...item, completedAt: new Date().toISOString(), submissionFiles: [...(item.submissionFiles ?? []), ...uploaded] } : item)); return uploaded; }} isWeb={!isNativeApp} />}
       {view === 'student-events' && <StudentEventScanner onBack={() => navigate('home')} onScan={token => { setScannedEventToken(token); navigate('event-checkin'); }} />}
       {view === 'event-checkin' && <EventCheckin userName={user?.name ?? 'Aluno'} tokenOverride={scannedEventToken} onBack={() => { setScannedEventToken(null); navigate('student-events'); }} />}
       {view === 'professor-attendance' && <AttendanceList onBack={() => navigate('professor-dashboard')} subjects={subjects} isWeb={!isNativeApp} />}
@@ -760,7 +761,7 @@ function NewsCard({ news, onClick, isWeb = false }: NewsCardProps & { isWeb?: bo
         <p className="text-sm text-slate-500 line-clamp-2">{news.summary}</p>
         <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium">
           <Calendar size={12} className="text-blue-700" />
-          {new Date(news.date).toLocaleDateString('pt-BR')}
+          {formatDate(news.date)}
         </div>
       </div>
     </div>
@@ -809,7 +810,7 @@ function NewsDetailView({ news, onBack }: { news: NewsItem, onBack: () => void }
         <h2 className="text-3xl font-bold leading-tight tracking-tight text-slate-900">{news.title}</h2>
         <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
           <Calendar size={16} className="text-blue-700" />
-          {new Date(news.date).toLocaleDateString('pt-BR')}
+          {formatDate(news.date)}
         </div>
         <div className="h-px bg-slate-200 my-4" />
         <p className="text-slate-600 leading-relaxed whitespace-pre-wrap text-lg">{news.content}</p>
@@ -1380,7 +1381,7 @@ function StudentPerformanceView({ onBack, userName, assessments, attendance, sub
 
         <section className="space-y-3">
           <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">Frequência por aula</h3>
-          {subjectAttendance.length === 0 ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Nenhuma chamada registrada nesta matéria.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="w-full min-w-[420px] border-collapse text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-600"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Situação</th></tr></thead><tbody>{subjectAttendance.slice().sort((a, b) => b.date.localeCompare(a.date)).map(record => <tr key={record.id} className="border-t border-slate-200"><td className="px-4 py-3">{new Date(`${record.date}T12:00:00`).toLocaleDateString('pt-BR')}</td><td className="px-4 py-3 capitalize">{record.status}</td></tr>)}</tbody></table></div>}
+          {subjectAttendance.length === 0 ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Nenhuma chamada registrada nesta matéria.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="w-full min-w-[420px] border-collapse text-left text-sm"><thead className="bg-slate-100 text-xs uppercase text-slate-600"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Situação</th></tr></thead><tbody>{subjectAttendance.slice().sort((a, b) => b.date.localeCompare(a.date)).map(record => <tr key={record.id} className="border-t border-slate-200"><td className="px-4 py-3">{formatDate(record.date)}</td><td className="px-4 py-3 capitalize">{record.status}</td></tr>)}</tbody></table></div>}
         </section>
       </motion.div>
     );

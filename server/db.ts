@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 
-export const db = new Database('campus-news.db');
+export const db = new Database(process.env.DATABASE_PATH ?? 'campus-news.db');
 
 db.pragma('journal_mode = WAL');
 
@@ -179,6 +179,17 @@ db.exec(`
     studentId TEXT NOT NULL,
     completedAt TEXT NOT NULL,
     UNIQUE(assignmentId, studentId)
+  );
+
+  CREATE TABLE IF NOT EXISTS assignment_submission_files (
+    id TEXT PRIMARY KEY,
+    assignmentId TEXT NOT NULL,
+    studentId TEXT NOT NULL,
+    fileName TEXT NOT NULL,
+    storagePath TEXT NOT NULL UNIQUE,
+    mimeType TEXT NOT NULL,
+    fileSize INTEGER NOT NULL,
+    uploadedAt TEXT NOT NULL
   );
 `);
 
