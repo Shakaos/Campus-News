@@ -95,7 +95,7 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const decoded = jwt.verify(token, JWT_SECRET) as { sub: string };
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(decoded.sub) as any;
 
-    if (!user) {
+    if (!user || user.role === 'disabled') {
       return res.status(401).json({ message: 'Usuário não encontrado.' });
     }
 
