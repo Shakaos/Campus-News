@@ -56,7 +56,7 @@ jobs:
           VITE_API_URL: ${{ inputs.api_url }}
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: bash ./gradlew assembleDebug
         working-directory: android
 
       - name: Publish APK download
