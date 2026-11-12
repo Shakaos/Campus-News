@@ -12,6 +12,7 @@ export const RegisterSchema = z.object({
 });
 
 export const CreateProfessorSchema = RegisterSchema;
+export const CreateStudentSchema = RegisterSchema;
 
 const OptionalDateString = z.union([
   z.string().min(1).refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida'),

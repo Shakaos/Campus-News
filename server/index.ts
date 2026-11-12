@@ -2,15 +2,15 @@ import cors from 'cors';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import dotenv from 'dotenv';
 import express, { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
 
 import { db } from './db.js';
 import { ApiError, errorHandler, asyncHandler } from './middleware.js';
-import { LoginSchema, RegisterSchema, CreateProfessorSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema, CampusEventSchema, EventCheckInSchema, EventQrTokenSchema, SubjectAssessmentSchema, ClassAttendanceSchema, AssignmentSchema, AssignmentCompletionSchema } from './schemas.js';
+import { LoginSchema, RegisterSchema, CreateProfessorSchema, CreateStudentSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema, CampusEventSchema, EventCheckInSchema, EventQrTokenSchema, SubjectAssessmentSchema, ClassAttendanceSchema, AssignmentSchema, AssignmentCompletionSchema } from './schemas.js';
 import {
   addQueueTicket,
   createAttendance,
@@ -63,8 +63,6 @@ import {
   findUserById,
 } from './dbHelpers.js';
 import { generateId, generateNewsId, generateRoomId, generateUserId, hashPassword, sanitizeUser, verifyPassword } from './utils.js';
-
-dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4001);
@@ -144,7 +142,7 @@ app.post('/api/auth/login', asyncHandler(async (req: Request, res: Response) => 
   const user = findUserByEmail(username) as any;
 
   const passwordMatches = user && (user.password === password || await verifyPassword(password, user.password));
-  if (!passwordMatches) {
+  if (!passwordMatches || user.role === 'disabled') {
     return res.status(401).json({ message: 'Usuário ou senha incorretos.' });
   }
 
@@ -163,7 +161,15 @@ app.post('/api/auth/login', asyncHandler(async (req: Request, res: Response) => 
 }));
 
 app.post('/api/auth/register', asyncHandler(async (req: Request, res: Response) => {
-  const parsed = RegisterSchema.safeParse(req.body);
+  return res.status(403).json({ message: 'Cadastro público desativado. Solicite uma conta à administração da instituição.' });
+}));
+
+app.get('/api/admin/students', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {
+  return res.json(getUsersByRole('aluno'));
+});
+
+app.post('/api/admin/students', authMiddleware, adminMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const parsed = CreateStudentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
   }
@@ -180,12 +186,8 @@ app.post('/api/auth/register', asyncHandler(async (req: Request, res: Response) 
     email,
     password: await hashPassword(password),
   });
-  const token = jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 
-  return res.status(201).json({
-    token,
-    user: { id: user.id, name: user.name, role: user.role, email: user.email },
-  });
+  return res.status(201).json({ id: user.id, name: user.name, role: user.role, email: user.email });
 }));
 
 app.get('/api/admin/professors', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {

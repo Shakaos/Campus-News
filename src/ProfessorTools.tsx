@@ -450,7 +450,7 @@ export function Reports({ onBack }: { onBack: () => void }) {
                   {Object.entries(report.data).map(([key, value]) => (
                     <div key={key} className="flex justify-between">
                       <span className="capitalize">{key}:</span>
-                      <span className="font-semibold">{typeof value === 'number' ? `${value}${key.includes('Percentage') ? '%' : ''}` : value}</span>
+                      <span className="font-semibold">{typeof value === 'number' ? `${value}${key.includes('Percentage') ? '%' : ''}` : typeof value === 'string' ? value : JSON.stringify(value)}</span>
                     </div>
                   ))}
                 </div>

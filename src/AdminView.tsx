@@ -11,7 +11,7 @@ interface AdminViewProps {
 }
 
 export function AdminView({ onBack, isWeb = false }: AdminViewProps) {
-  const [activeTab, setActiveTab] = useState<'news' | 'rooms' | 'professors'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'rooms' | 'students' | 'professors'>('news');
   const [isLoading, setIsLoading] = useState(false);
 
   return (
@@ -55,6 +55,16 @@ export function AdminView({ onBack, isWeb = false }: AdminViewProps) {
           Salas
         </button>
         <button
+          onClick={() => setActiveTab('students')}
+          className={`px-4 py-3 font-bold border-b-2 transition-colors ${
+            activeTab === 'students'
+              ? 'border-blue-700 text-blue-700'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Alunos
+        </button>
+        <button
           onClick={() => setActiveTab('professors')}
           className={`px-4 py-3 font-bold border-b-2 transition-colors ${
             activeTab === 'professors'
@@ -69,44 +79,49 @@ export function AdminView({ onBack, isWeb = false }: AdminViewProps) {
       {/* Content */}
       {activeTab === 'news' && <NewsManager isWeb={isWeb} />}
       {activeTab === 'rooms' && <RoomsManager isWeb={isWeb} />}
-      {activeTab === 'professors' && <ProfessorManager isWeb={isWeb} />}
+      {activeTab === 'students' && <AccountManager role="aluno" isWeb={isWeb} />}
+      {activeTab === 'professors' && <AccountManager role="professor" isWeb={isWeb} />}
     </motion.div>
   );
 }
 
-function ProfessorManager({ isWeb = false }: { isWeb?: boolean }) {
-  const [professors, setProfessors] = useState<User[]>([]);
+function AccountManager({ role, isWeb = false }: { role: 'aluno' | 'professor'; isWeb?: boolean }) {
+  const [accounts, setAccounts] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
 
-  const loadProfessors = async () => {
+  const loadAccounts = async () => {
     setIsLoading(true);
     try {
-      setProfessors(await adminApi.listProfessors());
+      setAccounts(role === 'aluno' ? await adminApi.listStudents() : await adminApi.listProfessors());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar professores.');
+      setError(loadError instanceof Error ? loadError.message : `Erro ao carregar ${role === 'aluno' ? 'alunos' : 'professores'}.`);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadProfessors();
-  }, []);
+    void loadAccounts();
+  }, [role]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
     setError('');
     try {
-      await adminApi.createProfessor(formData);
+      if (role === 'aluno') {
+        await adminApi.createStudent(formData);
+      } else {
+        await adminApi.createProfessor(formData);
+      }
       setFormData({ name: '', email: '', password: '' });
       setShowForm(false);
-      await loadProfessors();
+      await loadAccounts();
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Erro ao criar professor.');
+      setError(createError instanceof Error ? createError.message : `Erro ao criar ${role === 'aluno' ? 'aluno' : 'professor'}.`);
       setIsLoading(false);
     }
   };
@@ -118,7 +133,7 @@ function ProfessorManager({ isWeb = false }: { isWeb?: boolean }) {
         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-800 transition-colors"
       >
         <UserPlus size={20} />
-        Novo Professor
+        Novo {role === 'aluno' ? 'Aluno' : 'Professor'}
       </button>
 
       {showForm && (
@@ -149,16 +164,16 @@ function ProfessorManager({ isWeb = false }: { isWeb?: boolean }) {
         </form>
       )}
 
-      {isLoading && professors.length === 0 ? (
+      {isLoading && accounts.length === 0 ? (
         <div className="text-center py-8 text-slate-500">Carregando...</div>
-      ) : professors.length === 0 ? (
-        <div className="text-center py-8 text-slate-500">Nenhum professor cadastrado.</div>
+      ) : accounts.length === 0 ? (
+        <div className="text-center py-8 text-slate-500">Nenhum {role === 'aluno' ? 'aluno' : 'professor'} cadastrado.</div>
       ) : (
         <div className={isWeb ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {professors.map((professor) => (
-            <div key={professor.id} className={`rounded-lg border border-slate-200 bg-white ${isWeb ? 'p-3' : 'p-4'}`}>
-              <p className="font-bold text-slate-900">{professor.name}</p>
-              <p className="text-sm text-slate-500">{professor.email}</p>
+          {accounts.map((account) => (
+            <div key={account.id} className={`rounded-lg border border-slate-200 bg-white ${isWeb ? 'p-3' : 'p-4'}`}>
+              <p className="font-bold text-slate-900">{account.name}</p>
+              <p className="text-sm text-slate-500">{account.email}</p>
             </div>
           ))}
         </div>
@@ -172,9 +187,9 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Omit<NewsItem, 'id' | 'category'> & { category: NewsItem['category'] | '' }>({
     title: '',
-    category: '',
+    category: 'aviso',
     summary: '',
     content: '',
     date: getLocalDateInputValue(),
@@ -199,13 +214,16 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const category = formData.category;
+    if (!category) return;
     setIsLoading(true);
+    const newsData: Omit<NewsItem, 'id'> = { ...formData, category };
 
     try {
       if (editingId) {
-        await newsApi.update(editingId, formData);
+        await newsApi.update(editingId, newsData);
       } else {
-        await newsApi.create(formData);
+        await newsApi.create(newsData);
       }
       
       await loadNews();
@@ -213,7 +231,7 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
       setEditingId(null);
       setFormData({
         title: '',
-        category: '',
+        category: 'aviso',
         summary: '',
         content: '',
         date: getLocalDateInputValue(),
@@ -264,7 +282,7 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
           if (!showForm) {
             setFormData({
               title: '',
-              category: '',
+              category: 'aviso',
               summary: '',
               content: '',
               date: getLocalDateInputValue(),
@@ -297,7 +315,7 @@ function NewsManager({ isWeb = false }: { isWeb?: boolean }) {
               <label className="block text-sm font-bold text-slate-700 mb-1">Categoria</label>
               <select
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value as NewsItem['category'] | '' })}
                 required
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700"
               >
@@ -426,7 +444,7 @@ function RoomsManager({ isWeb = false }: { isWeb?: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Omit<Room, 'id'>>({
     name: '',
     building: '',
     floor: '',
@@ -460,8 +478,8 @@ function RoomsManager({ isWeb = false }: { isWeb?: boolean }) {
       const submitData = {
         ...formData,
         capacity: Number(formData.capacity),
-        currentProfessor: formData.currentProfessor || null,
-        nextClass: formData.nextClass || null,
+        currentProfessor: formData.currentProfessor || undefined,
+        nextClass: formData.nextClass || undefined,
       };
 
       if (editingId) {
@@ -588,7 +606,7 @@ function RoomsManager({ isWeb = false }: { isWeb?: boolean }) {
               <label className="block text-sm font-bold text-slate-700 mb-1">Status</label>
               <select
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as Room['status'] })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700"
               >
                 <option value="disponível">Disponível</option>

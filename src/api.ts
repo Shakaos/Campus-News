@@ -39,15 +39,16 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
-  register: async (name: string, email: string, password: string) =>
-    apiFetch<LoginResponse>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ name, email, password }),
-    }),
   me: async () => apiFetch<User>('/me'),
 };
 
 export const adminApi = {
+  listStudents: async () => apiFetch<User[]>('/admin/students'),
+  createStudent: async (data: { name: string; email: string; password: string }) =>
+    apiFetch<User>('/admin/students', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   listProfessors: async () => apiFetch<User[]>('/admin/professors'),
   createProfessor: async (data: { name: string; email: string; password: string }) =>
     apiFetch<User>('/admin/professors', {

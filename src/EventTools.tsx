@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
-import { BrowserQRCodeReader } from '@zxing/browser';
+import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser';
 import { ArrowLeft, CalendarDays, Check, Download, MapPin, Plus, QrCode, Users, Camera, Link2 } from 'lucide-react';
 import { apiFetch } from './api';
 import type { User } from './types';
@@ -40,7 +40,7 @@ function extractEventToken(rawValue: string) {
 
 export function StudentEventScanner({ onBack, onScan }: { onBack: () => void; onScan: (token: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const readerRef = useRef<BrowserQRCodeReader | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
   const onScanRef = useRef(onScan);
   const [isScanning, setIsScanning] = useState(false);
   const [manualValue, setManualValue] = useState('');
@@ -55,7 +55,6 @@ export function StudentEventScanner({ onBack, onScan }: { onBack: () => void; on
     if (!isScanning || !video) return;
     let isDisposed = false;
     const reader = new BrowserQRCodeReader();
-    readerRef.current = reader;
 
     void reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } } }, video, (result, _scanError, controls) => {
       if (isDisposed || !result) return;
@@ -66,18 +65,26 @@ export function StudentEventScanner({ onBack, onScan }: { onBack: () => void; on
       }
       isDisposed = true;
       controls.stop();
+      controlsRef.current = null;
       setIsScanning(false);
       onScanRef.current(token);
+    }).then(controls => {
+      if (isDisposed) {
+        controls.stop();
+      } else {
+        controlsRef.current = controls;
+      }
     }).catch(scanError => {
-      if (isDisposed) return;
-      setError(scanError instanceof Error ? scanError.message : 'Não foi possível abrir a câmera. Confira as permissões do navegador.');
-      setIsScanning(false);
+      if (!isDisposed) {
+        setError(scanError instanceof Error ? scanError.message : 'Não foi possível abrir a câmera. Confira as permissões do navegador.');
+        setIsScanning(false);
+      }
     });
 
     return () => {
       isDisposed = true;
-      readerRef.current?.reset();
-      readerRef.current = null;
+      controlsRef.current?.stop();
+      controlsRef.current = null;
     };
   }, [isScanning]);
 
@@ -102,7 +109,7 @@ export function StudentEventScanner({ onBack, onScan }: { onBack: () => void; on
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
         <section className="space-y-4 border-y border-slate-300 py-5">
           <div><h3 className="font-bold text-slate-900">Leitura pela câmera</h3><p className="mt-1 text-sm text-slate-600">Use a câmera para ler o QR individual que o professor gerou para você.</p></div>
-          {!isScanning ? <button type="button" onClick={() => { setError(''); setIsScanning(true); }} className="inline-flex items-center gap-2 rounded-md bg-emerald-800 px-4 py-3 font-bold text-white hover:bg-emerald-900"><Camera size={18} />Abrir câmera</button> : <div className="space-y-3"><video ref={videoRef} className="aspect-video w-full rounded-lg bg-slate-950 object-cover" muted playsInline /><button type="button" onClick={() => { readerRef.current?.reset(); setIsScanning(false); }} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Parar câmera</button></div>}
+          {!isScanning ? <button type="button" onClick={() => { setError(''); setIsScanning(true); }} className="inline-flex items-center gap-2 rounded-md bg-emerald-800 px-4 py-3 font-bold text-white hover:bg-emerald-900"><Camera size={18} />Abrir câmera</button> : <div className="space-y-3"><video ref={videoRef} className="aspect-video w-full rounded-lg bg-slate-950 object-cover" muted playsInline /><button type="button" onClick={() => { controlsRef.current?.stop(); controlsRef.current = null; setIsScanning(false); }} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Parar câmera</button></div>}
           {error && <p role="alert" className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</p>}
         </section>
 

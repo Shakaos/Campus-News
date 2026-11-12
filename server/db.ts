@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 export const db = new Database(process.env.DATABASE_PATH ?? 'campus-news.db');
 
@@ -321,7 +323,7 @@ const seedSectors = [
 ];
 
 const countUsers = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-if (countUsers.count === 0) {
+if (countUsers.count === 0 && process.env.NODE_ENV !== 'production') {
   const insertUser = db.prepare(`
     INSERT INTO users (id, name, role, email, password)
     VALUES (@id, @name, @role, @email, @password)
@@ -330,6 +332,39 @@ if (countUsers.count === 0) {
     for (const row of rows) insertUser.run(row);
   });
   insertManyUsers(seedUsers);
+}
+
+if (process.env.NODE_ENV === 'production') {
+  const disableDemoAccount = db.prepare(`
+    UPDATE users SET role = 'disabled', password = ?
+    WHERE id = ? AND role != 'disabled'
+  `);
+  for (const user of seedUsers) {
+    disableDemoAccount.run(bcrypt.hashSync(randomBytes(32).toString('hex'), 10), user.id);
+  }
+
+  const adminEmail = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword || adminPassword.length < 12) {
+    throw new Error('Set INITIAL_ADMIN_EMAIL and an INITIAL_ADMIN_PASSWORD of at least 12 characters in production.');
+  }
+
+  const existingAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
+  if (!existingAdmin) {
+    const accountWithEmail = db.prepare('SELECT id, role FROM users WHERE email = ?').get(adminEmail) as { id: string; role: string } | undefined;
+    if (accountWithEmail && accountWithEmail.role !== 'disabled') {
+      throw new Error('INITIAL_ADMIN_EMAIL already belongs to a non-admin account.');
+    }
+
+    const passwordHash = bcrypt.hashSync(adminPassword, 10);
+    if (accountWithEmail) {
+      db.prepare("UPDATE users SET name = 'Administrador', role = 'admin', password = ? WHERE id = ?")
+        .run(passwordHash, accountWithEmail.id);
+    } else {
+      db.prepare('INSERT INTO users (id, name, role, email, password) VALUES (?, ?, ?, ?, ?)')
+        .run(randomUUID(), 'Administrador', 'admin', adminEmail, passwordHash);
+    }
+  }
 }
 
 const countNews = db.prepare('SELECT COUNT(*) as count FROM news').get() as { count: number };

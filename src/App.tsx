@@ -226,13 +226,7 @@ export default function App() {
   if (view === 'login') {
     return (
       <ErrorBoundary>
-        <LoginView onLogin={login} onRegister={async (name, email, password) => {
-          const response = await authApi.register(name, email, password);
-          setUser(response.user);
-          localStorage.setItem('campus_token', response.token);
-          localStorage.setItem('campus_user', JSON.stringify(response.user));
-          setView(new URLSearchParams(window.location.search).has('eventToken') && response.user.role === 'aluno' ? 'event-checkin' : 'home');
-        }} />
+        <LoginView onLogin={login} />
       </ErrorBoundary>
     );
   }
@@ -385,7 +379,7 @@ export default function App() {
           animate={{ y: 0 }}
           className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 px-6 py-3 flex justify-around items-center md:hidden shadow-lg"
         >
-          <button onClick={() => navigate('home')} className={`p-2 transition-colors ${view === 'home' ? 'text-blue-800 bg-blue-100 rounded-xl' : 'text-slate-400 hover:text-slate-600'}`}><LayoutDashboard size={24} /></button>
+          <button onClick={() => navigate('home')} className="p-2 transition-colors text-slate-400 hover:text-slate-600"><LayoutDashboard size={24} /></button>
           <button onClick={() => navigate('campus-news')} className={`p-2 transition-colors ${view === 'campus-news' ? 'text-blue-800 bg-blue-100 rounded-xl' : 'text-slate-400 hover:text-slate-600'}`}><Newspaper size={24} /></button>
           <button onClick={() => navigate('salas')} className={`p-2 transition-colors ${view === 'salas' ? 'text-blue-800 bg-blue-100 rounded-xl' : 'text-slate-400 hover:text-slate-600'}`}><Search size={24} /></button>
           <button onClick={() => navigate('filas')} className={`p-2 transition-colors ${view === 'filas' || view === 'acompanhamento' ? 'text-blue-800 bg-blue-100 rounded-xl' : 'text-slate-400 hover:text-slate-600'}`}><Users size={24} /></button>
@@ -647,7 +641,7 @@ function ModuleCard({
   compact = false,
   web = false
 }: { 
-  icon: React.ReactNode, 
+  icon: React.ReactElement<{ size?: number }>,
   title: string, 
   description: string, 
   onClick: () => void,
@@ -668,7 +662,7 @@ function ModuleCard({
       
       <div className={`${web ? 'space-y-2' : 'space-y-5'} relative z-10`}>
         <div className={`${web ? 'p-2 rounded-md' : 'p-4 rounded-2xl'} ${color} inline-flex transition-transform duration-300 group-hover:rotate-6 ${iconColor}`}>
-          {React.cloneElement(icon as React.ReactElement, { size: web ? 20 : compact ? 20 : 24 })}
+          {React.cloneElement(icon, { size: web ? 20 : compact ? 20 : 24 })}
         </div>
         <div className="space-y-1">
           <h3 className={`${web ? (compact ? 'text-base' : 'text-lg') : (compact ? 'text-xl' : 'text-2xl')} font-black tracking-tight text-slate-900 transition-colors group-hover:text-blue-800`}>
@@ -1061,13 +1055,9 @@ function StatCard({ icon, label, value, trend }: { icon: React.ReactNode, label:
 
 function LoginView({
   onLogin,
-  onRegister,
 }: {
   onLogin: (email: string, password: string) => Promise<void>;
-  onRegister: (name: string, email: string, password: string) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -1076,11 +1066,7 @@ function LoginView({
     e.preventDefault();
 
     try {
-      if (mode === 'register') {
-        await onRegister(name, email, password);
-      } else {
-        await onLogin(email, password);
-      }
+      await onLogin(email, password);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Não foi possível concluir a operação.');
     }
@@ -1106,33 +1092,16 @@ function LoginView({
 
         <AnimatePresence mode="wait">
           <motion.form
-              key={mode}
-              initial={{ opacity: 0, x: mode === 'login' ? -20 : 20 }}
+              initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: mode === 'login' ? 20 : -20 }}
+              exit={{ opacity: 0, x: 20 }}
               onSubmit={handleSubmit}
               className="space-y-6"
             >
-              <div className="flex rounded-2xl bg-slate-800 p-1">
-                <button type="button" onClick={() => { setMode('login'); setError(''); }} className={`flex-1 rounded-xl py-3 text-xs font-bold uppercase tracking-widest transition-colors ${mode === 'login' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
-                  Entrar
-                </button>
-                <button type="button" onClick={() => { setMode('register'); setError(''); }} className={`flex-1 rounded-xl py-3 text-xs font-bold uppercase tracking-widest transition-colors ${mode === 'register' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
-                  Criar conta
-                </button>
-              </div>
-
               <div className="text-center space-y-2">
-                <p className="text-slate-400 font-medium">{mode === 'login' ? 'Entre com sua conta do campus' : 'Crie sua conta de aluno'}</p>
-                {mode === 'register' && <p className="text-xs text-slate-500">Seu acesso será criado como aluno.</p>}
+                <p className="text-slate-400 font-medium">Entre com sua conta do campus</p>
+                <p className="text-xs text-slate-500">Contas são criadas pela administração da instituição. Solicite seu acesso à secretaria.</p>
               </div>
-
-              {mode === 'register' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nome completo</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 px-5 text-white focus:ring-2 focus:ring-blue-600 outline-none transition-all" required />
-                </div>
-              )}
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">E-mail</label>
@@ -1152,7 +1121,7 @@ function LoginView({
               )}
 
               <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 active:scale-[0.98] uppercase tracking-widest text-xs">
-                {mode === 'login' ? 'Entrar no sistema' : 'Criar minha conta'}
+                Entrar no sistema
               </button>
             </motion.form>
         </AnimatePresence>

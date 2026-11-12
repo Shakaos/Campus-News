@@ -74,13 +74,17 @@ O código iOS fica pronto, mas **só compila em um Mac** com Xcode:
 npm run mobile:ios
 ```
 
-### Logins de demonstração
+### Cadastro e logins de demonstração
+
+O cadastro público está desativado. A administração da instituição cria contas de alunos e professores na área **Administração**; os usuários devem solicitar acesso à secretaria.
+
+Em produção, defina `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` (mínimo de 12 caracteres) no ambiente do servidor para criar a conta inicial de administrador. As contas de demonstração abaixo funcionam somente em desenvolvimento local; são desativadas em produção.
 
 | Perfil | Usuário | Senha |
 | --- | --- | --- |
-| Administrador | `admin` | `admin123` |
-| Professor | `professor` | `prof123` |
-| Aluno | `aluno` | `aluno123` |
+| Administrador | `admin@campus.edu` | `admin123` |
+| Professor | `professor@campus.edu` | `prof123` |
+| Aluno | `aluno@campus.edu` | `aluno123` |
 
 ---
 
