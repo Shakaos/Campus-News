@@ -12,7 +12,10 @@ db.exec(`
     name TEXT NOT NULL,
     role TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL
+    password TEXT NOT NULL,
+    courseId TEXT,
+    coursePeriod INTEGER,
+    classGroup TEXT
   );
 
   CREATE TABLE IF NOT EXISTS news (
@@ -125,7 +128,22 @@ db.exec(`
     teacher TEXT NOT NULL,
     schedule TEXT NOT NULL,
     workload INTEGER NOT NULL,
-    credits INTEGER NOT NULL
+    credits INTEGER NOT NULL,
+    courseId TEXT,
+    coursePeriod INTEGER,
+    academicTerm TEXT,
+    classGroup TEXT,
+    professorId TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS academic_courses (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+  );
+
+  CREATE TABLE IF NOT EXISTS academic_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS grades (
@@ -194,6 +212,26 @@ db.exec(`
     uploadedAt TEXT NOT NULL
   );
 `);
+
+const ensureColumn = (table: string, column: string, definition: string) => {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+
+ensureColumn('users', 'courseId', 'TEXT');
+ensureColumn('users', 'coursePeriod', 'INTEGER');
+ensureColumn('users', 'classGroup', 'TEXT');
+ensureColumn('academic_subjects', 'courseId', 'TEXT');
+ensureColumn('academic_subjects', 'coursePeriod', 'INTEGER');
+ensureColumn('academic_subjects', 'academicTerm', 'TEXT');
+ensureColumn('academic_subjects', 'classGroup', 'TEXT');
+ensureColumn('academic_subjects', 'professorId', 'TEXT');
+
+const now = new Date();
+const defaultAcademicTerm = `${now.getFullYear()}/${now.getMonth() < 6 ? 1 : 2}`;
+db.prepare('INSERT OR IGNORE INTO academic_settings (key, value) VALUES (?, ?)').run('active_term', defaultAcademicTerm);
 
 const seedUsers = [
   {

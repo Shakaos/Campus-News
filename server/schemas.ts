@@ -12,7 +12,31 @@ export const RegisterSchema = z.object({
 });
 
 export const CreateProfessorSchema = RegisterSchema;
-export const CreateStudentSchema = RegisterSchema;
+export const StudentAcademicProfileSchema = z.object({
+  courseId: z.string().min(1, 'Selecione um curso'),
+  coursePeriod: z.number().int().min(1).max(12),
+  classGroup: z.string().trim().min(1).max(30),
+});
+export const CreateStudentSchema = RegisterSchema.extend(StudentAcademicProfileSchema.shape);
+
+export const AcademicCourseSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+});
+
+export const AcademicTermSchema = z.object({
+  term: z.string().regex(/^\d{4}\/[12]$/, 'Informe o semestre no formato AAAA/1 ou AAAA/2'),
+});
+
+export const AcademicSubjectSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  courseId: z.string().min(1),
+  coursePeriod: z.number().int().min(1).max(12),
+  classGroup: z.string().trim().min(1).max(30),
+  professorId: z.string().min(1),
+  schedule: z.string().trim().min(2).max(120),
+  workload: z.number().int().positive().max(1000),
+  credits: z.number().int().positive().max(100),
+});
 
 const OptionalDateString = z.union([
   z.string().min(1).refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida'),

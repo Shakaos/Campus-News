@@ -4,7 +4,62 @@ export const getUsers = () => db.prepare('SELECT * FROM users ORDER BY name').al
 export const getNews = () => db.prepare('SELECT * FROM news ORDER BY date DESC').all();
 export const getRooms = () => db.prepare('SELECT * FROM rooms ORDER BY building, name').all();
 export const getQueueSectors = () => db.prepare('SELECT * FROM queue_sectors ORDER BY name').all();
-export const getSubjects = () => db.prepare('SELECT * FROM academic_subjects ORDER BY name').all();
+const subjectQuery = `SELECT s.*, c.name AS courseName
+  FROM academic_subjects s
+  JOIN academic_courses c ON c.id = s.courseId`;
+export const getSubjects = () => db.prepare(`${subjectQuery}
+  WHERE s.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')
+  ORDER BY c.name, s.coursePeriod, s.name, s.classGroup`).all();
+export const getSubjectsForStudent = (studentId: string) => db.prepare(`${subjectQuery}
+  JOIN users u ON u.id = ?
+  WHERE u.role = 'aluno'
+    AND s.courseId = u.courseId
+    AND s.coursePeriod = u.coursePeriod
+    AND s.classGroup = u.classGroup
+    AND s.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')
+  ORDER BY s.name`).all(studentId);
+export const getSubjectsForProfessor = (professorId: string) => db.prepare(`${subjectQuery}
+  WHERE s.professorId = ?
+    AND s.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')
+  ORDER BY c.name, s.coursePeriod, s.name, s.classGroup`).all(professorId);
+export const getSubjectById = (id: string) => db.prepare(`${subjectQuery}
+  WHERE s.id = ? AND s.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')`).get(id) as any;
+export const getStudentsForSubject = (subjectId: string, professorId?: string) => db.prepare(`
+  SELECT u.id, u.name, u.role, u.email, u.courseId, u.coursePeriod, u.classGroup, c.name AS courseName
+  FROM users u
+  JOIN academic_subjects s
+    ON s.courseId = u.courseId
+    AND s.coursePeriod = u.coursePeriod
+    AND s.classGroup = u.classGroup
+  LEFT JOIN academic_courses c ON c.id = u.courseId
+  WHERE s.id = ?
+    AND s.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')
+    AND u.role = 'aluno'
+    AND (? IS NULL OR s.professorId = ?)
+  ORDER BY u.name`).all(subjectId, professorId ?? null, professorId ?? null);
+export const getAcademicCourses = () => db.prepare('SELECT * FROM academic_courses ORDER BY name').all();
+export const getAcademicCourseById = (id: string) => db.prepare('SELECT * FROM academic_courses WHERE id = ?').get(id) as any;
+export const createAcademicCourse = (data: { id: string; name: string }) => {
+  db.prepare('INSERT INTO academic_courses (id, name) VALUES (@id, @name)').run(data);
+  return data;
+};
+export const getCurrentAcademicTerm = () =>
+  (db.prepare("SELECT value FROM academic_settings WHERE key = 'active_term'").get() as { value: string } | undefined)?.value ?? '';
+export const setCurrentAcademicTerm = (value: string) => {
+  db.prepare(`INSERT INTO academic_settings (key, value) VALUES ('active_term', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(value);
+  return value;
+};
+export const createAcademicSubject = (data: {
+  id: string; name: string; teacher: string; schedule: string; workload: number; credits: number;
+  courseId: string; coursePeriod: number; academicTerm: string; classGroup: string; professorId: string;
+}) => {
+  db.prepare(`INSERT INTO academic_subjects
+    (id, name, teacher, schedule, workload, credits, courseId, coursePeriod, academicTerm, classGroup, professorId)
+    VALUES (@id, @name, @teacher, @schedule, @workload, @credits, @courseId, @coursePeriod, @academicTerm, @classGroup, @professorId)`
+  ).run(data);
+  return db.prepare(`${subjectQuery} WHERE s.id = ?`).get(data.id);
+};
 export const getGrades = (studentId?: string) => {
   if (studentId) {
     return db.prepare('SELECT * FROM grades WHERE studentId = ? ORDER BY subjectName').all(studentId);
@@ -12,10 +67,19 @@ export const getGrades = (studentId?: string) => {
 
   return db.prepare('SELECT * FROM grades ORDER BY subjectName, studentName').all();
 };
+export const getGradesForProfessor = (professorId: string) => db.prepare(`
+  SELECT g.* FROM grades g
+  JOIN academic_subjects s ON s.id = g.subjectId
+  WHERE s.professorId = ?
+    AND s.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')
+  ORDER BY g.subjectName, g.studentName`).all(professorId);
+export const getGradeById = (id: string) => db.prepare('SELECT * FROM grades WHERE id = ?').get(id) as any;
 
-export const getSubjectAssessments = (studentId?: string) => studentId
+export const getSubjectAssessments = (studentId?: string, professorId?: string) => studentId
   ? db.prepare('SELECT * FROM subject_assessments WHERE studentId = ? ORDER BY subjectName, period, assessmentType').all(studentId)
-  : db.prepare('SELECT * FROM subject_assessments ORDER BY subjectName, studentName, period, assessmentType').all();
+  : professorId
+    ? db.prepare('SELECT * FROM subject_assessments WHERE professorId = ? ORDER BY subjectName, studentName, period, assessmentType').all(professorId)
+    : db.prepare('SELECT * FROM subject_assessments ORDER BY subjectName, studentName, period, assessmentType').all();
 
 export const saveSubjectAssessment = (data: {
   id: string; studentId: string; studentName: string; subjectId: string; subjectName: string;
@@ -51,20 +115,40 @@ export const findUserByEmailOrRole = (value: string) =>
   db.prepare('SELECT * FROM users WHERE email = ? OR role = ? LIMIT 1').get(value, value) as any;
 
 export const findUserByEmail = (email: string) =>
-  db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1').get(email) as any;
+  db.prepare(`SELECT u.*, c.name AS courseName FROM users u
+    LEFT JOIN academic_courses c ON c.id = u.courseId
+    WHERE u.email = ? LIMIT 1`).get(email) as any;
 export const findUserById = (id: string) =>
-  db.prepare('SELECT id, name, role, email FROM users WHERE id = ? LIMIT 1').get(id) as any;
+  db.prepare(`SELECT u.id, u.name, u.role, u.email, u.courseId, u.coursePeriod, u.classGroup, c.name AS courseName
+    FROM users u LEFT JOIN academic_courses c ON c.id = u.courseId WHERE u.id = ? LIMIT 1`).get(id) as any;
 
-export const createUser = (data: { id: string; name: string; role: string; email: string; password: string }) => {
+export const createUser = (data: {
+  id: string; name: string; role: string; email: string; password: string;
+  courseId?: string | null; coursePeriod?: number | null; classGroup?: string | null;
+}) => {
+  const user = {
+    ...data,
+    courseId: data.courseId ?? null,
+    coursePeriod: data.coursePeriod ?? null,
+    classGroup: data.classGroup ?? null,
+  };
   db.prepare(`
-    INSERT INTO users (id, name, role, email, password)
-    VALUES (@id, @name, @role, @email, @password)
-  `).run(data);
-  return data;
+    INSERT INTO users (id, name, role, email, password, courseId, coursePeriod, classGroup)
+    VALUES (@id, @name, @role, @email, @password, @courseId, @coursePeriod, @classGroup)
+  `).run(user);
+  return user;
+};
+
+export const updateUserAcademicProfile = (id: string, data: { courseId: string; coursePeriod: number; classGroup: string }) => {
+  db.prepare(`UPDATE users SET courseId = @courseId, coursePeriod = @coursePeriod, classGroup = @classGroup
+    WHERE id = @id AND role = 'aluno'`).run({ id, ...data });
+  return findUserById(id);
 };
 
 export const getUsersByRole = (role: string) =>
-  db.prepare('SELECT id, name, role, email FROM users WHERE role = ? ORDER BY name').all(role);
+  db.prepare(`SELECT u.id, u.name, u.role, u.email, u.courseId, u.coursePeriod, u.classGroup, c.name AS courseName
+    FROM users u LEFT JOIN academic_courses c ON c.id = u.courseId
+    WHERE u.role = ? ORDER BY u.name`).all(role);
 
 export const addQueueTicket = (ticket: {
   id: string;
@@ -332,17 +416,30 @@ export const createAssignment = (assignment: {
 };
 
 export const getAssignmentsByProfessor = (professorId: string) =>
-  db.prepare('SELECT * FROM assignments WHERE professorId = ? ORDER BY dueAt ASC').all(professorId);
+  db.prepare(`SELECT a.*, c.name AS courseName, s.coursePeriod, s.classGroup, s.academicTerm
+    FROM assignments a
+    JOIN academic_subjects s ON s.id = a.subjectId
+    JOIN academic_courses c ON c.id = s.courseId
+    WHERE a.professorId = ? ORDER BY a.dueAt ASC`).all(professorId);
 
 export const getAssignmentById = (id: string) =>
   db.prepare('SELECT * FROM assignments WHERE id = ?').get(id) as any;
 
 export const getAssignmentsByStudent = (studentId: string) =>
-  db.prepare(`SELECT a.*, s.completedAt, f.id AS fileId, f.fileName, f.fileSize, f.mimeType, f.uploadedAt AS fileUploadedAt
+  db.prepare(`SELECT a.*, c.name AS courseName, subject.coursePeriod, subject.classGroup, subject.academicTerm,
+      s.completedAt, f.id AS fileId, f.fileName, f.fileSize, f.mimeType, f.uploadedAt AS fileUploadedAt
     FROM assignments a
+    JOIN academic_subjects subject ON subject.id = a.subjectId
+    JOIN academic_courses c ON c.id = subject.courseId
+    JOIN users student ON student.id = ?
+      AND student.role = 'aluno'
+      AND subject.courseId = student.courseId
+      AND subject.coursePeriod = student.coursePeriod
+      AND subject.classGroup = student.classGroup
+      AND subject.academicTerm = (SELECT value FROM academic_settings WHERE key = 'active_term')
     LEFT JOIN assignment_submissions s ON s.assignmentId = a.id AND s.studentId = ?
     LEFT JOIN assignment_submission_files f ON f.assignmentId = a.id AND f.studentId = ?
-    ORDER BY a.dueAt ASC, f.uploadedAt ASC`).all(studentId, studentId)
+    ORDER BY a.dueAt ASC, f.uploadedAt ASC`).all(studentId, studentId, studentId)
     .reduce((assignments: any[], row: any) => {
       let assignment = assignments.find(item => item.id === row.id);
       if (!assignment) {
@@ -385,10 +482,13 @@ export const createAssignmentSubmissionFiles = (files: {
 };
 
 export const getAssignmentSubmissionFilesForProfessor = (professorId: string) =>
-  db.prepare(`SELECT a.id AS assignmentId, a.title AS assignmentTitle, a.subjectName, f.studentId,
+  db.prepare(`SELECT a.id AS assignmentId, a.title AS assignmentTitle, a.subjectName,
+      c.name AS courseName, s.coursePeriod, s.classGroup, f.studentId,
       u.name AS studentName, f.id AS fileId, f.fileName, f.fileSize, f.mimeType, f.uploadedAt
     FROM assignment_submission_files f
     JOIN assignments a ON a.id = f.assignmentId
+    JOIN academic_subjects s ON s.id = a.subjectId
+    JOIN academic_courses c ON c.id = s.courseId
     JOIN users u ON u.id = f.studentId
     WHERE a.professorId = ?
     ORDER BY f.uploadedAt DESC`).all(professorId)
@@ -400,6 +500,9 @@ export const getAssignmentSubmissionFilesForProfessor = (professorId: string) =>
           assignmentId: row.assignmentId,
           assignmentTitle: row.assignmentTitle,
           subjectName: row.subjectName,
+          courseName: row.courseName,
+          coursePeriod: row.coursePeriod,
+          classGroup: row.classGroup,
           studentId: row.studentId,
           studentName: row.studentName,
           uploadedAt: row.uploadedAt,

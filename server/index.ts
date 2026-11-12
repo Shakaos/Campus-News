@@ -10,7 +10,7 @@ import 'dotenv/config';
 
 import { db } from './db.js';
 import { ApiError, errorHandler, asyncHandler } from './middleware.js';
-import { LoginSchema, RegisterSchema, CreateProfessorSchema, CreateStudentSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema, CampusEventSchema, EventCheckInSchema, EventQrTokenSchema, SubjectAssessmentSchema, ClassAttendanceSchema, AssignmentSchema, AssignmentCompletionSchema } from './schemas.js';
+import { LoginSchema, RegisterSchema, CreateProfessorSchema, CreateStudentSchema, StudentAcademicProfileSchema, AcademicCourseSchema, AcademicTermSchema, AcademicSubjectSchema, NewsSchema, RoomSchema, AttendanceSchema, LabReservationSchema, ClassNoticeSchema, GradeSchema, CampusEventSchema, EventCheckInSchema, EventQrTokenSchema, SubjectAssessmentSchema, ClassAttendanceSchema, AssignmentSchema, AssignmentCompletionSchema } from './schemas.js';
 import {
   addQueueTicket,
   createAttendance,
@@ -41,6 +41,8 @@ import {
   findUserByEmail,
   getSubjects,
   getGrades,
+  getGradesForProfessor,
+  getGradeById,
   updateAttendance,
   updateNews,
   updateRoom,
@@ -58,11 +60,22 @@ import {
   getSubjectAssessments,
   saveSubjectAssessment,
   getClassAttendance,
+  getStudentsForSubject,
   getStudentAttendance,
   saveClassAttendanceRecord,
   findUserById,
+  getAcademicCourses,
+  getAcademicCourseById,
+  createAcademicCourse,
+  getCurrentAcademicTerm,
+  setCurrentAcademicTerm,
+  createAcademicSubject,
+  getSubjectById,
+  getSubjectsForStudent,
+  getSubjectsForProfessor,
+  updateUserAcademicProfile,
 } from './dbHelpers.js';
-import { generateId, generateNewsId, generateRoomId, generateUserId, hashPassword, sanitizeUser, verifyPassword } from './utils.js';
+import { generateId, generateNewsId, generateRoomId, generateUserId, hashPassword, verifyPassword } from './utils.js';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4001);
@@ -155,6 +168,10 @@ app.post('/api/auth/login', asyncHandler(async (req: Request, res: Response) => 
     name: user.name,
     role: user.role,
     email: user.email,
+    courseId: user.courseId,
+    courseName: user.courseName,
+    coursePeriod: user.coursePeriod,
+    classGroup: user.classGroup,
   };
 
   return res.json({ token, user: publicUser });
@@ -174,7 +191,11 @@ app.post('/api/admin/students', authMiddleware, adminMiddleware, asyncHandler(as
     return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, courseId, coursePeriod, classGroup } = parsed.data;
+  const course = getAcademicCourseById(courseId);
+  if (!course) {
+    return res.status(400).json({ message: 'O curso selecionado não existe.' });
+  }
   if (findUserByEmail(email)) {
     return res.status(409).json({ message: 'Já existe uma conta com este e-mail.' });
   }
@@ -185,10 +206,73 @@ app.post('/api/admin/students', authMiddleware, adminMiddleware, asyncHandler(as
     role: 'aluno',
     email,
     password: await hashPassword(password),
+    courseId,
+    coursePeriod,
+    classGroup,
   });
 
-  return res.status(201).json({ id: user.id, name: user.name, role: user.role, email: user.email });
+  return res.status(201).json({
+    id: user.id, name: user.name, role: user.role, email: user.email,
+    courseId, courseName: course.name, coursePeriod, classGroup,
+  });
 }));
+
+app.put('/api/admin/students/:id/academic-profile', authMiddleware, adminMiddleware, (req: Request, res: Response) => {
+  const parsed = StudentAcademicProfileSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Dados acadêmicos inválidos.', errors: parsed.error.errors });
+  if (!getAcademicCourseById(parsed.data.courseId)) {
+    return res.status(400).json({ message: 'O curso selecionado não existe.' });
+  }
+  const student = findUserById(req.params.id);
+  if (!student || student.role !== 'aluno') return res.status(404).json({ message: 'Aluno não encontrado.' });
+  return res.json(updateUserAcademicProfile(student.id, parsed.data));
+});
+
+app.get('/api/admin/courses', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {
+  return res.json(getAcademicCourses());
+});
+
+app.post('/api/admin/courses', authMiddleware, adminMiddleware, (req: Request, res: Response) => {
+  const parsed = AcademicCourseSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Dados do curso inválidos.', errors: parsed.error.errors });
+  if (getAcademicCourses().some((course: any) => course.name.toLocaleLowerCase() === parsed.data.name.toLocaleLowerCase())) {
+    return res.status(409).json({ message: 'Este curso já está cadastrado.' });
+  }
+  const course = createAcademicCourse({ id: generateId(), name: parsed.data.name });
+  return res.status(201).json(course);
+});
+
+app.get('/api/admin/academic-term', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {
+  return res.json({ term: getCurrentAcademicTerm() });
+});
+
+app.put('/api/admin/academic-term', authMiddleware, adminMiddleware, (req: Request, res: Response) => {
+  const parsed = AcademicTermSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Semestre letivo inválido.', errors: parsed.error.errors });
+  return res.json({ term: setCurrentAcademicTerm(parsed.data.term) });
+});
+
+app.get('/api/admin/subjects', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {
+  return res.json(getSubjects());
+});
+
+app.post('/api/admin/subjects', authMiddleware, adminMiddleware, (req: Request, res: Response) => {
+  const parsed = AcademicSubjectSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Dados da turma inválidos.', errors: parsed.error.errors });
+  const course = getAcademicCourseById(parsed.data.courseId);
+  if (!course) return res.status(400).json({ message: 'O curso selecionado não existe.' });
+  const professor = findUserById(parsed.data.professorId);
+  if (!professor || professor.role !== 'professor') {
+    return res.status(400).json({ message: 'Selecione uma conta de professor válida.' });
+  }
+  const offering = createAcademicSubject({
+    id: generateId(),
+    ...parsed.data,
+    teacher: professor.name,
+    academicTerm: getCurrentAcademicTerm(),
+  });
+  return res.status(201).json(offering);
+});
 
 app.get('/api/admin/professors', authMiddleware, adminMiddleware, (_req: Request, res: Response) => {
   return res.json(getUsersByRole('professor'));
@@ -223,7 +307,7 @@ app.get('/api/me', authMiddleware, (req: Request, res: Response) => {
     return res.status(401).json({ message: 'Não autenticado.' });
   }
 
-  return res.json(sanitizeUser(user));
+  return res.json(findUserById(user.id));
 });
 
 // News CRUD
@@ -231,19 +315,31 @@ app.get('/api/news', (_req, res) => {
   res.json(getNews());
 });
 
-app.get('/api/subjects', (_req, res) => {
-  res.json(getSubjects());
+app.get('/api/subjects', authMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  if (user.role === 'admin') return res.json(getSubjects());
+  if (user.role === 'professor') return res.json(getSubjectsForProfessor(user.id));
+  if (user.role === 'aluno') return res.json(getSubjectsForStudent(user.id));
+  return res.status(403).json({ message: 'Acesso restrito a membros da instituição.' });
 });
 
 app.get('/api/grades', authMiddleware, (req: Request, res: Response) => {
   const user = (req as Request & { user?: any }).user;
-  const grades = user && user.role === 'aluno' ? getGrades(user.id) : getGrades();
-  return res.json(grades);
+  if (user.role === 'aluno') return res.json(getGrades(user.id));
+  if (user.role === 'professor') return res.json(getGradesForProfessor(user.id));
+  if (user.role === 'admin') return res.json(getGrades());
+  return res.status(403).json({ message: 'Acesso restrito a membros da instituição.' });
 });
 
-app.get('/api/attendance/students', authMiddleware, professorMiddleware, (_req: Request, res: Response) =>
-  res.json(getUsersByRole('aluno'))
-);
+app.get('/api/attendance/students', authMiddleware, professorMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  const subjectId = typeof req.query.subjectId === 'string' ? req.query.subjectId : '';
+  const subject = getSubjectById(subjectId);
+  if (!subject || subject.professorId !== user.id) {
+    return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  }
+  return res.json(getStudentsForSubject(subjectId, user.id));
+});
 
 app.get('/api/attendance/student-history', authMiddleware, (req: Request, res: Response) => {
   const user = (req as Request & { user?: any }).user;
@@ -251,21 +347,30 @@ app.get('/api/attendance/student-history', authMiddleware, (req: Request, res: R
   return res.json(getStudentAttendance(user.id));
 });
 
-app.get('/api/attendance/class/:subjectId', authMiddleware, professorMiddleware, (req: Request, res: Response) =>
-  res.json(getClassAttendance(req.params.subjectId))
-);
+app.get('/api/attendance/class/:subjectId', authMiddleware, professorMiddleware, (req: Request, res: Response) => {
+  const user = (req as Request & { user?: any }).user;
+  const subject = getSubjectById(req.params.subjectId);
+  if (!subject || subject.professorId !== user.id) {
+    return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  }
+  return res.json(getClassAttendance(req.params.subjectId));
+});
 
 app.post('/api/attendance/session', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const parsed = ClassAttendanceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Dados da chamada inválidos.', errors: parsed.error.errors });
 
   const user = (req as Request & { user?: any }).user;
-  const subject = getSubjects().find((item: any) => item.id === parsed.data.subjectId);
-  if (!subject) return res.status(404).json({ message: 'Matéria não encontrada.' });
+  const subject = getSubjectById(parsed.data.subjectId);
+  if (!subject || subject.professorId !== user.id) return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  const roster = getStudentsForSubject(subject.id, user.id) as { id: string }[];
+  const rosterIds = new Set(roster.map((student) => student.id));
+  if (parsed.data.records.some((record) => !rosterIds.has(record.studentId))) {
+    return res.status(403).json({ message: 'A chamada contém aluno que não pertence a esta turma.' });
+  }
 
   for (const record of parsed.data.records) {
     const student = findUserById(record.studentId);
-    if (!student || student.role !== 'aluno') continue;
     saveClassAttendanceRecord({
       id: generateId(), studentId: student.id, studentName: student.name,
       subjectId: subject.id, date: parsed.data.date, status: record.status, professorId: user.id,
@@ -276,7 +381,10 @@ app.post('/api/attendance/session', authMiddleware, professorMiddleware, asyncHa
 
 app.get('/api/subject-assessments', authMiddleware, (req: Request, res: Response) => {
   const user = (req as Request & { user?: any }).user;
-  return res.json(user.role === 'aluno' ? getSubjectAssessments(user.id) : getSubjectAssessments());
+  if (user.role === 'aluno') return res.json(getSubjectAssessments(user.id));
+  if (user.role === 'professor') return res.json(getSubjectAssessments(undefined, user.id));
+  if (user.role === 'admin') return res.json(getSubjectAssessments());
+  return res.status(403).json({ message: 'Acesso restrito a membros da instituição.' });
 });
 
 app.put('/api/subject-assessments', authMiddleware, professorMiddleware, asyncHandler(async (req: Request, res: Response) => {
@@ -284,11 +392,14 @@ app.put('/api/subject-assessments', authMiddleware, professorMiddleware, asyncHa
   if (!parsed.success) return res.status(400).json({ message: 'Dados da avaliação inválidos.', errors: parsed.error.errors });
 
   const student = findUserById(parsed.data.studentId);
-  const subject = getSubjects().find((item: any) => item.id === parsed.data.subjectId);
+  const subject = getSubjectById(parsed.data.subjectId);
   if (!student || student.role !== 'aluno') return res.status(404).json({ message: 'Aluno não encontrado.' });
-  if (!subject) return res.status(404).json({ message: 'Matéria não encontrada.' });
-
   const user = (req as Request & { user?: any }).user;
+  if (!subject || subject.professorId !== user.id) return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  if (!(getStudentsForSubject(subject.id, user.id) as { id: string }[]).some((item) => item.id === student.id)) {
+    return res.status(403).json({ message: 'O aluno não pertence a esta turma.' });
+  }
+
   const assessmentData = parsed.data as {
     studentId: string;
     subjectId: string;
@@ -309,8 +420,17 @@ app.post('/api/grades', authMiddleware, professorMiddleware, asyncHandler(async 
     return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
   }
 
+  const user = (req as Request & { user?: any }).user;
+  const subject = getSubjectById(parsed.data.subjectId);
+  if (!subject || subject.professorId !== user.id) {
+    return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  }
+  const student = (getStudentsForSubject(subject.id, user.id) as { id: string; name: string }[])
+    .find((record) => record.id === parsed.data.studentId);
+  if (!student) return res.status(403).json({ message: 'O aluno não pertence a esta turma.' });
+
   const id = `grade-${Date.now()}`;
-  const grade = createGrade({ id, ...parsed.data });
+  const grade = createGrade({ id, ...parsed.data, studentName: student.name, subjectName: subject.name });
   return res.status(201).json(grade);
 }));
 
@@ -321,7 +441,24 @@ app.put('/api/grades/:id', authMiddleware, professorMiddleware, asyncHandler(asy
     return res.status(400).json({ message: 'Validação falhou', errors: parsed.error.errors });
   }
 
-  const updated = updateGrade(id, parsed.data);
+  const existing = getGradeById(id);
+  if (!existing) return res.status(404).json({ message: 'Nota não encontrada.' });
+  const user = (req as Request & { user?: any }).user;
+  const subject = getSubjectById(parsed.data.subjectId ?? existing.subjectId);
+  if (!subject || subject.professorId !== user.id) {
+    return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  }
+  const student = (getStudentsForSubject(subject.id, user.id) as { id: string; name: string }[])
+    .find((record) => record.id === (parsed.data.studentId ?? existing.studentId));
+  if (!student) return res.status(403).json({ message: 'O aluno não pertence a esta turma.' });
+
+  const updated = updateGrade(id, {
+    ...parsed.data,
+    studentId: student.id,
+    studentName: student.name,
+    subjectId: subject.id,
+    subjectName: subject.name,
+  });
   if (!updated) {
     return res.status(404).json({ message: 'Nota não encontrada.' });
   }
@@ -676,14 +813,22 @@ app.post('/api/assignments', authMiddleware, professorMiddleware, asyncHandler(a
   const parsed = AssignmentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Dados do trabalho inválidos.', errors: parsed.error.errors });
 
-  const subject = getSubjects().find((item: any) => item.id === parsed.data.subjectId);
-  if (!subject) return res.status(404).json({ message: 'Matéria não encontrada.' });
   const user = (req as Request & { user?: any }).user;
+  const subject = getSubjectById(parsed.data.subjectId);
+  if (!subject || subject.professorId !== user.id) {
+    return res.status(403).json({ message: 'Turma não encontrada ou não atribuída a este professor.' });
+  }
   const assignment = createAssignment({
     id: generateId(), ...parsed.data, subjectName: subject.name,
     professorId: user.id, createdAt: new Date().toISOString(),
   });
-  return res.status(201).json(assignment);
+  return res.status(201).json({
+    ...assignment,
+    courseName: subject.courseName,
+    coursePeriod: subject.coursePeriod,
+    classGroup: subject.classGroup,
+    academicTerm: subject.academicTerm,
+  });
 }));
 
 app.put('/api/assignments/:id/completion', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
@@ -691,7 +836,9 @@ app.put('/api/assignments/:id/completion', authMiddleware, asyncHandler(async (r
   if (user.role !== 'aluno') return res.status(403).json({ message: 'Somente alunos podem atualizar seus trabalhos.' });
   const parsed = AssignmentCompletionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Estado do trabalho inválido.' });
-  if (!getAssignmentById(req.params.id)) return res.status(404).json({ message: 'Trabalho não encontrado.' });
+  if (!(getAssignmentsByStudent(user.id) as { id: string }[]).some((assignment) => assignment.id === req.params.id)) {
+    return res.status(404).json({ message: 'Trabalho não encontrado para este aluno.' });
+  }
 
   const updated = setAssignmentCompleted({
     id: generateId(), assignmentId: req.params.id, studentId: user.id,
@@ -730,6 +877,9 @@ app.get('/api/assignments/submissions', authMiddleware, professorMiddleware, (re
 app.post('/api/assignments/:id/submissions', authMiddleware, (req: Request, res: Response, next: NextFunction) => {
   const user = (req as Request & { user?: any }).user;
   if (user.role !== 'aluno') return res.status(403).json({ message: 'Somente alunos podem enviar arquivos.' });
+  if (!(getAssignmentsByStudent(user.id) as { id: string }[]).some((assignment) => assignment.id === req.params.id)) {
+    return res.status(404).json({ message: 'Trabalho não encontrado para este aluno.' });
+  }
   return assignmentUpload.array('files', MAX_ASSIGNMENT_FILES)(req, res, next);
 }, asyncHandler(async (req: Request, res: Response) => {
   const user = (req as Request & { user?: any }).user;

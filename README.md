@@ -80,6 +80,18 @@ O cadastro público está desativado. A administração da instituição cria co
 
 Em produção, defina `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` (mínimo de 12 caracteres) no ambiente do servidor para criar a conta inicial de administrador. As contas de demonstração abaixo funcionam somente em desenvolvimento local; são desativadas em produção.
 
+### Organização acadêmica
+
+Antes de cadastrar alunos, abra **Administração > Cursos e turmas**:
+
+1. Cadastre cada curso oferecido pela instituição.
+2. Confira o semestre letivo atual no formato `AAAA/1` ou `AAAA/2`.
+3. Cadastre as contas dos professores na aba **Professores**.
+4. Cadastre cada turma/disciplina indicando curso, período curricular, grupo (por exemplo, A), professor e horário.
+5. Ao cadastrar um aluno, selecione o curso, o período e o grupo correspondentes.
+
+O aluno verá apenas disciplinas do seu curso, período, grupo e semestre letivo atual. O professor verá apenas as turmas que a administração lhe atribuiu, incluindo curso, período e grupo. O “período do curso” (por exemplo, 3º período) é separado do bimestre usado para notas. Matrículas em disciplinas de outros períodos não são permitidas por este fluxo.
+
 | Perfil | Usuário | Senha |
 | --- | --- | --- |
 | Administrador | `admin@campus.edu` | `admin123` |

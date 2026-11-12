@@ -1,4 +1,4 @@
-import type { AssignmentRecord, AssignmentSubmissionFile, AssignmentSubmissionNotice, AttendanceStatus, ClassAttendanceRecord, CourseSubject, NewsItem, QueueSector, QueueTicket, Room, SubjectAssessmentRecord, User } from './types';
+import type { AcademicCourse, AssignmentRecord, AssignmentSubmissionFile, AssignmentSubmissionNotice, AttendanceStatus, ClassAttendanceRecord, CourseSubject, NewsItem, QueueSector, QueueTicket, Room, SubjectAssessmentRecord, User } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -44,14 +44,35 @@ export const authApi = {
 
 export const adminApi = {
   listStudents: async () => apiFetch<User[]>('/admin/students'),
-  createStudent: async (data: { name: string; email: string; password: string }) =>
+  createStudent: async (data: { name: string; email: string; password: string; courseId: string; coursePeriod: number; classGroup: string }) =>
     apiFetch<User>('/admin/students', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateStudentAcademicProfile: (id: string, data: { courseId: string; coursePeriod: number; classGroup: string }) =>
+    apiFetch<User>(`/admin/students/${encodeURIComponent(id)}/academic-profile`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
   listProfessors: async () => apiFetch<User[]>('/admin/professors'),
   createProfessor: async (data: { name: string; email: string; password: string }) =>
     apiFetch<User>('/admin/professors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  listCourses: () => apiFetch<AcademicCourse[]>('/admin/courses'),
+  createCourse: (name: string) => apiFetch<AcademicCourse>('/admin/courses', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  }),
+  getAcademicTerm: () => apiFetch<{ term: string }>('/admin/academic-term'),
+  setAcademicTerm: (term: string) => apiFetch<{ term: string }>('/admin/academic-term', {
+    method: 'PUT',
+    body: JSON.stringify({ term }),
+  }),
+  listAcademicSubjects: () => apiFetch<CourseSubject[]>('/admin/subjects'),
+  createAcademicSubject: (data: Omit<CourseSubject, 'id' | 'teacher' | 'courseName' | 'academicTerm'>) =>
+    apiFetch<CourseSubject>('/admin/subjects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -95,7 +116,7 @@ export const gradeApi = {
 };
 
 export const academicApi = {
-  listStudents: () => apiFetch<User[]>('/attendance/students'),
+  listStudents: (subjectId: string) => apiFetch<User[]>(`/attendance/students?subjectId=${encodeURIComponent(subjectId)}`),
   listAssessments: () => apiFetch<SubjectAssessmentRecord[]>('/subject-assessments'),
   saveAssessment: (data: Pick<SubjectAssessmentRecord, 'studentId' | 'subjectId' | 'assessmentType' | 'period' | 'value'>) =>
     apiFetch<SubjectAssessmentRecord>('/subject-assessments', { method: 'PUT', body: JSON.stringify(data) }),

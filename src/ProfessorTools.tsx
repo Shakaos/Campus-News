@@ -39,11 +39,23 @@ export function AttendanceList({ onBack, subjects, isWeb = false }: { onBack: ()
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    void academicApi.listStudents()
+    if (!subjectId && subjects.length > 0) setSubjectId(subjects[0].id);
+  }, [subjectId, subjects]);
+
+  useEffect(() => {
+    if (!subjectId) {
+      setStudents([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setStudents([]);
+    void academicApi.listStudents(subjectId)
       .then(setStudents)
-      .catch(loadError => setMessage(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os alunos.'))
+      .catch(loadError => setMessage(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os alunos desta turma.'))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [subjectId]);
 
   useEffect(() => {
     if (!subjectId || !date) return;
@@ -95,7 +107,7 @@ export function AttendanceList({ onBack, subjects, isWeb = false }: { onBack: ()
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-semibold text-slate-700">Matéria
           <select value={subjectId} onChange={event => setSubjectId(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
-            {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+            {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name} · {subject.courseName} · {subject.coursePeriod}º período · Turma {subject.classGroup}</option>)}
           </select>
         </label>
         <label className="text-sm font-semibold text-slate-700">Data da aula

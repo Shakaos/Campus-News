@@ -1,7 +1,47 @@
 import { describe, it, expect } from 'vitest';
-import { AssignmentCompletionSchema, AssignmentSchema, CampusEventSchema, ClassAttendanceSchema, EventQrTokenSchema, LoginSchema, NewsSchema, RoomSchema, SubjectAssessmentSchema } from '../server/schemas';
+import { AcademicCourseSchema, AcademicSubjectSchema, AcademicTermSchema, AssignmentCompletionSchema, AssignmentSchema, CampusEventSchema, ClassAttendanceSchema, CreateStudentSchema, EventQrTokenSchema, LoginSchema, NewsSchema, RoomSchema, SubjectAssessmentSchema } from '../server/schemas';
 
 describe('Validation Schemas', () => {
+  describe('Academic setup', () => {
+    it('requires course, academic period, and class group when creating a student', () => {
+      const student = {
+        name: 'André Silva',
+        email: 'andre@example.edu',
+        password: 'student123',
+        courseId: 'systems',
+        coursePeriod: 3,
+        classGroup: 'A',
+      };
+      expect(CreateStudentSchema.safeParse(student).success).toBe(true);
+      expect(CreateStudentSchema.safeParse({ ...student, coursePeriod: 0 }).success).toBe(false);
+      expect(CreateStudentSchema.safeParse({
+        name: student.name, email: student.email, password: student.password,
+        courseId: student.courseId, classGroup: student.classGroup,
+      }).success).toBe(false);
+    });
+
+    it('validates course names and academic term format', () => {
+      expect(AcademicCourseSchema.safeParse({ name: 'Sistemas de Informação' }).success).toBe(true);
+      expect(AcademicTermSchema.safeParse({ term: '2026/2' }).success).toBe(true);
+      expect(AcademicTermSchema.safeParse({ term: '2026-2' }).success).toBe(false);
+    });
+
+    it('requires a valid course period and assigned professor for a class offering', () => {
+      const offering = {
+        name: 'Banco de Dados',
+        courseId: 'systems',
+        coursePeriod: 3,
+        classGroup: 'A',
+        professorId: 'professor-1',
+        schedule: 'Seg e Qua · 08:00',
+        workload: 60,
+        credits: 3,
+      };
+      expect(AcademicSubjectSchema.safeParse(offering).success).toBe(true);
+      expect(AcademicSubjectSchema.safeParse({ ...offering, coursePeriod: 13 }).success).toBe(false);
+    });
+  });
+
   describe('LoginSchema', () => {
     it('should validate correct login data', () => {
       const data = { username: 'admin@campus.edu', password: 'admin123' };

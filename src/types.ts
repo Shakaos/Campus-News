@@ -44,6 +44,15 @@ export interface User {
   name: string;
   role: Role;
   email: string;
+  courseId?: string | null;
+  courseName?: string | null;
+  coursePeriod?: number | null;
+  classGroup?: string | null;
+}
+
+export interface AcademicCourse {
+  id: string;
+  name: string;
 }
 
 export interface CourseSubject {
@@ -53,6 +62,12 @@ export interface CourseSubject {
   schedule: string;
   workload: number;
   credits: number;
+  courseId: string;
+  courseName: string;
+  coursePeriod: number;
+  academicTerm: string;
+  classGroup: string;
+  professorId: string;
 }
 
 export interface GradeRecord {
@@ -106,6 +121,10 @@ export interface AssignmentRecord {
   id: string;
   subjectId: string;
   subjectName: string;
+  courseName?: string;
+  coursePeriod?: number;
+  classGroup?: string;
+  academicTerm?: string;
   professorId: string;
   title: string;
   description: string;
@@ -128,6 +147,9 @@ export interface AssignmentSubmissionNotice {
   assignmentId: string;
   assignmentTitle: string;
   subjectName: string;
+  courseName?: string;
+  coursePeriod?: number;
+  classGroup?: string;
   studentId: string;
   studentName: string;
   uploadedAt: string;

@@ -70,22 +70,7 @@ export default function App() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [sectors, setSectors] = useState<QueueSector[]>([]);
-  const [subjects, setSubjects] = useState<CourseSubject[]>(() => {
-    const saved = localStorage.getItem('campus_subjects');
-    if (saved) {
-      try {
-        return JSON.parse(saved) as CourseSubject[];
-      } catch {
-        localStorage.removeItem('campus_subjects');
-      }
-    }
-
-    return [
-      { id: 'alg', name: 'Algoritmos II', teacher: 'Prof. Souza', schedule: 'Ter e Qui • 08:00', workload: 80, credits: 4 },
-      { id: 'bd', name: 'Banco de Dados', teacher: 'Prof. Lima', schedule: 'Seg e Qua • 10:00', workload: 80, credits: 4 },
-      { id: 'eng', name: 'Engenharia de Software', teacher: 'Prof. Rocha', schedule: 'Qua e Sex • 14:00', workload: 60, credits: 3 }
-    ];
-  });
+  const [subjects, setSubjects] = useState<CourseSubject[]>([]);
   const [grades, setGrades] = useState<GradeRecord[]>(() => {
     const saved = localStorage.getItem('campus_grades');
     if (saved) {
@@ -117,8 +102,24 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('campus_subjects', JSON.stringify(subjects));
-  }, [subjects]);
+    if (!user) {
+      setSubjects([]);
+      return;
+    }
+
+    let cancelled = false;
+    void subjectApi.list()
+      .then(subjectRecords => {
+        if (!cancelled) setSubjects(subjectRecords);
+      })
+      .catch(loadError => {
+        if (!cancelled) showError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar as turmas.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, showError]);
 
   useEffect(() => {
     localStorage.setItem('campus_grades', JSON.stringify(grades));
@@ -165,17 +166,15 @@ export default function App() {
       }
 
       try {
-        const [newsData, roomsData, sectorsData, subjectData] = await Promise.all([
+        const [newsData, roomsData, sectorsData] = await Promise.all([
           newsApi.list(),
           roomApi.list(),
           queueApi.list(),
-          subjectApi.list(),
         ]);
 
         setNews(newsData);
         setRooms(roomsData);
         setSectors(sectorsData);
-        if (subjectData.length) setSubjects(subjectData);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Erro ao carregar dados';
         showError(message);
@@ -206,6 +205,7 @@ export default function App() {
     localStorage.removeItem('campus_user');
     setView('login');
     setIsMenuOpen(false);
+    setSubjects([]);
   };
 
   // Navigation helper
@@ -1204,14 +1204,25 @@ function ProfessorGradesView({ onBack, subjects }: { onBack: () => void; subject
   const assessmentTypes: AssessmentType[] = ['N1', 'N2', 'Trabalho', 'Exame'];
 
   useEffect(() => {
-    void Promise.all([academicApi.listStudents(), academicApi.listAssessments()])
+    if (!subjectId && subjects.length > 0) setSubjectId(subjects[0].id);
+  }, [subjectId, subjects]);
+
+  useEffect(() => {
+    if (!subjectId) {
+      setStudents([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    void Promise.all([academicApi.listStudents(subjectId), academicApi.listAssessments()])
       .then(([studentRecords, assessmentRecords]) => {
         setStudents(studentRecords);
         setAssessments(assessmentRecords);
       })
       .catch(loadError => setMessage(loadError instanceof Error ? loadError.message : 'Não foi possível carregar a lista.'))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [subjectId]);
 
   useEffect(() => {
     const nextValues: Record<string, string> = {};
@@ -1246,8 +1257,8 @@ function ProfessorGradesView({ onBack, subjects }: { onBack: () => void; subject
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5 px-1 py-3 md:px-2">
       <div className="flex items-center gap-4"><button onClick={onBack} className="rounded-full p-2 text-slate-600 hover:bg-slate-100"><ArrowLeft size={20} /></button><div><p className="text-xs font-bold uppercase tracking-widest text-emerald-800">Área docente</p><h2 className="text-2xl font-bold text-slate-900">Lançamento de notas</h2></div></div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-semibold text-slate-700">Matéria<select value={subjectId} onChange={event => setSubjectId(event.target.value)} className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">{subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
-        <label className="text-sm font-semibold text-slate-700">Período<select value={period} onChange={event => setPeriod(event.target.value as GradeRecord['period'])} className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5"><option>1º Bimestre</option><option>2º Bimestre</option><option>3º Bimestre</option><option>4º Bimestre</option></select></label>
+        <label className="text-sm font-semibold text-slate-700">Turma / matéria<select value={subjectId} onChange={event => setSubjectId(event.target.value)} className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">{subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name} · {subject.courseName} · {subject.coursePeriod}º período · Turma {subject.classGroup}</option>)}</select></label>
+        <label className="text-sm font-semibold text-slate-700">Bimestre de avaliação<select value={period} onChange={event => setPeriod(event.target.value as GradeRecord['period'])} className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5"><option>1º Bimestre</option><option>2º Bimestre</option><option>3º Bimestre</option><option>4º Bimestre</option></select></label>
       </div>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[760px] border-collapse text-left text-sm">
@@ -1330,7 +1341,7 @@ function StudentPerformanceView({ onBack, userName, assessments, attendance, sub
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
               <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
-                <tr><th className="px-4 py-3 font-bold">Período</th><th className="px-4 py-3 font-bold">Avaliação</th><th className="px-4 py-3 font-bold">Nota</th></tr>
+                <tr><th className="px-4 py-3 font-bold">Bimestre</th><th className="px-4 py-3 font-bold">Avaliação</th><th className="px-4 py-3 font-bold">Nota</th></tr>
               </thead>
               <tbody>
                 {subjectRecords.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-500">Nenhuma nota lançada nesta matéria.</td></tr> : subjectRecords.map(record => <tr key={record.id} className="border-t border-slate-200">
@@ -1382,6 +1393,7 @@ function StudentPerformanceView({ onBack, userName, assessments, attendance, sub
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-bold text-slate-900">{subject.name}</p>
+                      <p className="text-xs text-slate-500">{subject.courseName} · {subject.coursePeriod}º período · Turma {subject.classGroup}</p>
                       <p className="text-xs text-slate-500">{subject.teacher}</p>
                     </div>
                     <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-2 py-1 rounded-full">{subject.credits} créditos</span>
